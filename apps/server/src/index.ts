@@ -163,13 +163,20 @@ async function main(): Promise<void> {
 
   const app = Fastify({ loggerInstance: logger });
   // Requirement 2: readiness is a real database check, not just liveness.
-  app.get("/health", async (_request, replyContext) => {
-    const reachable = await checkDatabaseReachable(database);
-    if (!reachable) {
-      return replyContext.status(503).send({ status: "unavailable" });
-    }
-    return { status: "ok" };
-  });
+  // logLevel: "silent" — the readiness/liveness probes hit this every
+  // 10-30s (deploy/deployment.yaml's periodSeconds); logging each one
+  // drowns out the handful of log lines per real turn that actually matter.
+  app.get(
+    "/health",
+    { logLevel: "silent" },
+    async (_request, replyContext) => {
+      const reachable = await checkDatabaseReachable(database);
+      if (!reachable) {
+        return replyContext.status(503).send({ status: "unavailable" });
+      }
+      return { status: "ok" };
+    },
+  );
 
   await app.listen({ port: config.port, host: "0.0.0.0" });
   logger.info({ port: config.port }, "Server listening");
