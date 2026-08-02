@@ -18,22 +18,26 @@ spec:
       labels:
         app: assistant-server
     spec:
+      # The repo (and its linked GHCR package) is private, so the node needs
+      # credentials to pull — created via `kubectl create secret
+      # docker-registry ghcr-pull-secret` from a gh CLI token with
+      # write:packages scope. See deploy/README.md.
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       # Requirement 21/27: migrations are checked-in SQL, applied here, not
       # generated at deploy time. The server itself also runs runMigrations()
       # on boot for local/dev convenience (see apps/server/src/index.ts) —
       # both are safe since drizzle tracks what's already applied.
       initContainers:
         - name: migrate
-          image: ghcr.io/OWNER/typescript-personal-assistant:latest
+          image: ghcr.io/cheongxinkang/typescript-personal-assistant:latest
           command: ["node", "node_modules/@assistant/db/dist/migrate.js"]
           envFrom:
             - secretRef:
                 name: assistant-secrets
       containers:
         - name: server
-          # Replace with the real registry path once images are published —
-          # see phase-1-implementation-plan.md's prerequisites.
-          image: ghcr.io/OWNER/typescript-personal-assistant:latest
+          image: ghcr.io/cheongxinkang/typescript-personal-assistant:latest
           ports:
             - containerPort: 3000
           envFrom:

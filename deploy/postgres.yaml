@@ -1,0 +1,78 @@
+# Plain StatefulSet on a local-path PVC, not an operator — see
+# docs/ARCHITECTURE.md §6: an operator's controller is another resident
+# pod, and the N95's memory budget has no room for infrastructure that
+# manages infrastructure.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: personal-assistant
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "REPLACE_ME"
+  POSTGRES_DB: personal_assistant
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: personal-assistant
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: personal-assistant
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None # headless, matches the StatefulSet's stable DNS use

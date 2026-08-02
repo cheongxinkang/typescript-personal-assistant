@@ -6,8 +6,8 @@ instructions if that's not configured on this machine yet.
 ## Build and push the image (off-box — the N95 serves, it does not compile)
 
 ```bash
-docker build --platform linux/amd64 -t ghcr.io/OWNER/typescript-personal-assistant:latest .
-docker push ghcr.io/OWNER/typescript-personal-assistant:latest
+docker build --platform linux/amd64 -t ghcr.io/cheongxinkang/typescript-personal-assistant:latest .
+docker push ghcr.io/cheongxinkang/typescript-personal-assistant:latest
 ```
 
 ## Apply the manifests
