@@ -23,6 +23,23 @@ const GENERIC_FAILURE_MESSAGE =
 const BUDGET_EXCEEDED_MESSAGE =
   "That's taking too long to work through. Please try again or rephrase your request.";
 
+/**
+ * A caller-contract violation (the caller must persist the user's message
+ * before calling runTurn), not an external failure — this must always
+ * propagate as a thrown error, never be converted into a generic
+ * user-facing envelope the way a genuine DB/provider failure is. Kept
+ * distinct from a plain Error precisely so the catch block below can tell
+ * the two apart and re-throw this one.
+ */
+class EmptyHistoryError extends Error {
+  constructor() {
+    super(
+      "runTurn called with empty history — the caller must persist the user's message before calling runTurn.",
+    );
+    this.name = "EmptyHistoryError";
+  }
+}
+
 export interface RunTurnParams {
   database: Database;
   provider: LLMProvider;
@@ -72,29 +89,31 @@ function envelopeForToolResult(toolName: string, toolResult: unknown): ResponseE
  * itself, since it already depends on packages/db and packages/rendering.
  */
 export async function runTurn(params: RunTurnParams): Promise<RunTurnResult> {
-  const history = await loadRecentHistory(
-    params.database,
-    params.sessionId,
-    params.historyLimit ?? DEFAULT_HISTORY_LIMIT,
-  );
-
-  if (history.length === 0) {
-    throw new Error(
-      "runTurn called with empty history — the caller must persist the user's message before calling runTurn.",
-    );
-  }
-
-  const lastIndex = history.length - 1;
-  const providerMessages = history.map((row, index) => ({
-    role: row.role,
-    content:
-      index === lastIndex && row.role === "user"
-        ? buildUserMessageEnvelope(params.now, params.ownerTimezone, row.content)
-        : row.content,
-  }));
-
   const startedAtMs = performance.now();
   try {
+    // Inside the try: a DB failure loading history (Failure/edge case
+    // "Database unavailable mid-turn") gets the same graceful envelope
+    // treatment as a provider failure below, rather than propagating as an
+    // unhandled rejection past runTurn entirely.
+    const history = await loadRecentHistory(
+      params.database,
+      params.sessionId,
+      params.historyLimit ?? DEFAULT_HISTORY_LIMIT,
+    );
+
+    if (history.length === 0) {
+      throw new EmptyHistoryError();
+    }
+
+    const lastIndex = history.length - 1;
+    const providerMessages = history.map((row, index) => ({
+      role: row.role,
+      content:
+        index === lastIndex && row.role === "user"
+          ? buildUserMessageEnvelope(params.now, params.ownerTimezone, row.content)
+          : row.content,
+    }));
+
     const agentResult = await runAgentTurn({
       provider: params.provider,
       systemPrompt: params.systemPrompt,
@@ -136,18 +155,30 @@ export async function runTurn(params: RunTurnParams): Promise<RunTurnResult> {
 
     return { envelope, text };
   } catch (error) {
+    if (error instanceof EmptyHistoryError) {
+      throw error; // a caller-contract violation, not an external failure
+    }
+
     params.onError?.(error);
     const latencyMs = Math.round(performance.now() - startedAtMs);
 
-    await insertTurnUsage(params.database, {
-      sessionId: params.sessionId,
-      provider: params.provider.name,
-      model: params.provider.model,
-      inputTokens: null,
-      outputTokens: null,
-      latencyMs,
-      outcome: "failure",
-    });
+    try {
+      await insertTurnUsage(params.database, {
+        sessionId: params.sessionId,
+        provider: params.provider.name,
+        model: params.provider.model,
+        inputTokens: null,
+        outputTokens: null,
+        latencyMs,
+        outcome: "failure",
+      });
+    } catch (usageWriteError) {
+      // The database write itself failed too — e.g. it's genuinely
+      // unreachable, the same condition that likely caused the outer
+      // failure. Nothing more can be recorded, but the user still gets a
+      // failure reply rather than an unhandled rejection.
+      params.onError?.(usageWriteError);
+    }
 
     // Never the raw error text — see the spec's Security section.
     const envelope: ResponseEnvelope = {

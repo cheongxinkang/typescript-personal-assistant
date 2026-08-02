@@ -17,6 +17,21 @@ export class UnregisteredRenderKindError extends Error {
   }
 }
 
+// Discord's hard message-length limit. Phase 1 has exactly one channel, so
+// this is unconditional for now — parameterize by platform when Stage 8
+// adds a second channel with a different limit. Per Requirement 17,
+// platform concerns live only here, never in packages/chat-loop.
+const DISCORD_MAX_LENGTH = 2000;
+const TRUNCATION_MARKER = "\n\n[…truncated]";
+
+function truncateForPlatform(text: string): string {
+  if (text.length <= DISCORD_MAX_LENGTH) {
+    return text;
+  }
+  const keep = DISCORD_MAX_LENGTH - TRUNCATION_MARKER.length;
+  return text.slice(0, keep) + TRUNCATION_MARKER;
+}
+
 /**
  * Requirement 16: an unregistered kind is a startup failure, not a runtime
  * one — `render` throws immediately if the registry lacks an entry, and
@@ -44,6 +59,7 @@ export class RenderRegistry {
     // under the kind it was registered for, so the data shape here always
     // matches what was registered — but TypeScript can't see that link
     // through the type-erased Map, hence the cast.
-    return renderer(envelope.data as never, context);
+    const text = renderer(envelope.data as never, context);
+    return truncateForPlatform(text);
   }
 }

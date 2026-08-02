@@ -24,10 +24,13 @@ jobs:
 
       - run: pnpm build
 
-      - run: pnpm test
+      - run: pnpm test:coverage
         # From Stage 2 onward, DB-backed tests provision their own ephemeral
         # Postgres via Testcontainers, which works out of the box on
         # ubuntu-latest's runner (Docker is preinstalled) — no separate
-        # service container is declared here.
+        # service container is declared here. Coverage (not just pnpm test)
+        # so the >=80% gate on tools/db/chat-loop
+        # (phase-1-vertical-slice.md's Test plan) is actually enforced, not
+        # just checked manually.
 
       - run: pnpm lint

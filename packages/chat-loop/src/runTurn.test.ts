@@ -2,7 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CONVERSATIONAL_KIND, EVENT_CREATED_KIND, FAILURE_KIND } from "@assistant/core";
 import { FakeProvider } from "@assistant/providers";
 import { RenderRegistry, renderConversational, renderEventCreated, renderFailure } from "@assistant/rendering";
-import { ensureOwnerUser, findOrCreateSession, insertUserMessage, loadRecentHistory, OWNER_USER_ID } from "@assistant/db";
+import {
+  createDatabase,
+  ensureOwnerUser,
+  findOrCreateSession,
+  insertUserMessage,
+  loadRecentHistory,
+  OWNER_USER_ID,
+} from "@assistant/db";
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import { runTurn } from "./runTurn.js";
 import { buildTestMcpClient, TEST_ADD_EVENT_TOOL_DEFINITION } from "./testHelpers/mcp.js";
@@ -340,4 +347,37 @@ describe("runTurn", () => {
       }),
     ).rejects.toThrow(/empty history/);
   });
+
+  it("returns a failure envelope, never an unhandled rejection, when the database is unreachable mid-turn", async () => {
+    // A real unreachable connection, not a mock — port 1 on localhost has
+    // nothing listening. loadRecentHistory is now inside runTurn's own
+    // try/catch specifically so this doesn't propagate past runTurn
+    // uncaught (see runTurn.ts's comment on why it moved inside the try).
+    const sessionId = await freshSessionWithUserMessage("hello");
+    const unreachableDatabase = createDatabase("postgres://postgres:postgres@localhost:1/nope");
+    const provider = new FakeProvider([]);
+    const mcpClient = await buildTestMcpClient(() => ({}));
+    let caughtError: unknown;
+
+    const { envelope } = await runTurn({
+      database: unreachableDatabase,
+      provider,
+      systemPrompt: "sys",
+      sessionId,
+      now: NOW,
+      ownerTimezone: "Asia/Singapore",
+      registry: registry(),
+      mcpClient,
+      tools: [],
+      onError: (error) => {
+        caughtError = error;
+      },
+    });
+
+    expect(envelope.status).toBe("error");
+    expect(envelope.kind).toBe("failure");
+    expect(caughtError).toBeDefined();
+
+    await unreachableDatabase.client.end({ timeout: 1 });
+  }, 15_000);
 });

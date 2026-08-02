@@ -52,4 +52,22 @@ describe("findOrCreateSession", () => {
     });
     expect(a.id).not.toBe(b.id);
   });
+
+  it("resolves to one session when several calls race to create the same new channel", async () => {
+    // A real concurrency test, not a mock: several calls for the same
+    // brand-new channelId started together. All selects find nothing, all
+    // attempt to insert, and the unique index forces all but one to lose —
+    // exercising the fallback read on lines 42-54, which a purely
+    // sequential test can't reach (the first call's own insert would
+    // already satisfy a second call's initial select). Ten concurrent
+    // callers rather than two, since two didn't reliably interleave enough
+    // to lose the race against real Postgres over a pooled connection.
+    const params = { userId: OWNER_USER_ID, channelType: "discord", channelId: "channel-race" };
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => findOrCreateSession(testDb.database, params)),
+    );
+
+    const uniqueIds = new Set(results.map((r) => r.id));
+    expect(uniqueIds.size).toBe(1);
+  });
 });

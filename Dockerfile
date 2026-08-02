@@ -30,7 +30,9 @@ RUN pnpm build
 
 # Prunes the workspace down to apps/server's production dependency closure —
 # an N95 should serve, not carry every devDependency in the runtime image.
-RUN pnpm --filter @assistant/server deploy --prod /out
+# --legacy: pnpm 10+ otherwise requires inject-workspace-packages=true for
+# a deploy target with workspace dependencies (verified against pnpm 11.1.2).
+RUN pnpm --filter @assistant/server deploy --prod --legacy /out
 
 FROM --platform=linux/amd64 node:22-bookworm-slim AS runtime
 WORKDIR /app
