@@ -8,10 +8,7 @@
   "include": ["src"],
   "references": [
     { "path": "../core" },
-    { "path": "../agents" },
     { "path": "../providers" },
-    { "path": "../prompts" },
-    { "path": "../rendering" },
     { "path": "../db" }
   ]
 }

@@ -94,9 +94,13 @@ export const turnUsage = pgTable("turn_usage", {
     .notNull()
     .references(() => sessions.id),
   provider: text("provider").notNull(),
+  // The provider's configured model even on failure (no response to read
+  // one from) — see packages/providers's LLMProvider.model.
   model: text("model").notNull(),
-  inputTokens: integer("input_tokens").notNull(),
-  outputTokens: integer("output_tokens").notNull(),
+  // Null on a failed call — there is no usage to report when the provider
+  // never returned. Always present on success.
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
   cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
   latencyMs: integer("latency_ms").notNull(),
   outcome: text("outcome", { enum: ["success", "failure"] }).notNull(),

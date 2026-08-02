@@ -1,19 +1,16 @@
 import type { Database } from "../client.js";
 import { turnUsage } from "../schema.js";
 
-/**
- * Unused until Stage 4 wires a real chat loop — the schema and this writer
- * exist from Stage 2 per the phase's scope table, recorded on both success
- * and failure once there is a real turn to record.
- */
+/** Wired into chat-loop's runTurn from Stage 4, recorded on both success and failure. */
 export async function insertTurnUsage(
   database: Database,
   params: {
     sessionId: string;
     provider: string;
     model: string;
-    inputTokens: number;
-    outputTokens: number;
+    // Null on a failed call — there is no usage to report.
+    inputTokens: number | null;
+    outputTokens: number | null;
     cacheReadTokens?: number;
     latencyMs: number;
     outcome: "success" | "failure";

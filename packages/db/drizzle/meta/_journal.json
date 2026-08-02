@@ -8,6 +8,13 @@
       "when": 1785655662525,
       "tag": "0000_lame_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785657959883,
+      "tag": "0001_wandering_namor",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime } from "./format.js";
+import { formatDateTime, formatIsoWithZone } from "./format.js";
 
 describe("formatDateTime", () => {
   it("renders weekday, day, month name, and year — never MM/DD", () => {
@@ -23,5 +23,12 @@ describe("formatDateTime", () => {
 
     expect(singapore).toBe("7:00 AM, Monday 3 August 2026");
     expect(newYork).toBe("7:00 PM, Sunday 2 August 2026");
+  });
+});
+
+describe("formatIsoWithZone", () => {
+  it("renders ISO-8601 with the zone's offset", () => {
+    const date = new Date("2026-08-02T23:00:00.000Z");
+    expect(formatIsoWithZone(date, "Asia/Singapore")).toBe("2026-08-03T07:00:00.000+08:00");
   });
 });

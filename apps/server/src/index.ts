@@ -2,23 +2,22 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import pino from "pino";
-import { CONVERSATIONAL_KIND, type ConversationalEnvelope } from "@assistant/core";
-import { RenderRegistry, renderConversational } from "@assistant/rendering";
+import { CONVERSATIONAL_KIND, FAILURE_KIND, SystemClock } from "@assistant/core";
+import { RenderRegistry, renderConversational, renderFailure } from "@assistant/rendering";
 import { DiscordAdapter } from "@assistant/channels";
 import {
   createDatabase,
   ensureOwnerUser,
   findOrCreateSession,
-  insertAssistantMessage,
   insertUserMessage,
-  loadRecentHistory,
   OWNER_USER_ID,
   runMigrations,
   type Database,
 } from "@assistant/db";
+import { AnthropicProvider } from "@assistant/providers";
+import { runTurn } from "@assistant/chat-loop";
+import { loadAssistantSystemPrompt } from "@assistant/prompts";
 import { ConfigError, loadConfig } from "./config.js";
-
-const HISTORY_TURN_LIMIT = 20;
 
 async function checkDatabaseReachable(database: Database): Promise<boolean> {
   try {
@@ -57,12 +56,17 @@ async function main(): Promise<void> {
     channelId: config.discordChannelId,
   });
 
-  const registry = new RenderRegistry().register(CONVERSATIONAL_KIND, renderConversational);
+  const registry = new RenderRegistry()
+    .register(CONVERSATIONAL_KIND, renderConversational)
+    .register(FAILURE_KIND, renderFailure);
 
-  // Stage 2 has no chat loop or provider yet — every message still gets a
-  // hardcoded envelope, but is now durably persisted and deduplicated
-  // through the real database rather than only the adapter's in-memory
-  // check from Stage 1.
+  const provider = new AnthropicProvider(config.anthropicApiKey);
+  const systemPrompt = loadAssistantSystemPrompt();
+  const clock = new SystemClock();
+
+  // Stage 4: a real chat loop, no tools yet — every message reaches the
+  // real model via runTurn, which owns its own history/persistence/usage
+  // recording (see packages/chat-loop/src/runTurn.ts).
   const adapter = new DiscordAdapter(
     { botToken: config.discordBotToken, channelId: config.discordChannelId },
     logger,
@@ -86,23 +90,28 @@ async function main(): Promise<void> {
       return;
     }
 
-    const history = await loadRecentHistory(database, session.id, HISTORY_TURN_LIMIT);
-    turnLogger.info({ historyLength: history.length }, "Loaded history");
-
-    const envelope: ConversationalEnvelope = {
-      status: "success",
-      kind: CONVERSATIONAL_KIND,
-      data: { text: `Received: "${message.content}" — the pipeline works.` },
-    };
+    const { envelope } = await runTurn({
+      database,
+      provider,
+      systemPrompt,
+      sessionId: session.id,
+      clock,
+      ownerTimezone: config.ownerTimezone,
+      onError: (error) => {
+        turnLogger.error(
+          { err: error instanceof Error ? error.message : String(error) },
+          "Provider call failed",
+        );
+      },
+    });
 
     const text = registry.render(envelope, { timezone: config.ownerTimezone });
     await reply.send(text);
-    await insertAssistantMessage(database, { sessionId: session.id, content: text });
-    turnLogger.info("Reply sent and persisted");
+    turnLogger.info({ outcome: envelope.status }, "Reply sent");
   });
 
   const app = Fastify({ loggerInstance: logger });
-  // Requirement 2: readiness is now a real database check, not just liveness.
+  // Requirement 2: readiness is a real database check, not just liveness.
   app.get("/health", async (_request, replyContext) => {
     const reachable = await checkDatabaseReachable(database);
     if (!reachable) {

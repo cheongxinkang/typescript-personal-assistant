@@ -22,3 +22,17 @@ export type ConversationalEnvelope = ResponseEnvelope<
   typeof CONVERSATIONAL_KIND,
   ConversationalData
 >;
+
+/**
+ * runTurn's failure path (Requirement 8: a turn-path failure becomes a
+ * user-visible message, never a thrown error). The message is always a
+ * fixed, generic string — never a raw provider error, per the spec's
+ * Security section.
+ */
+export interface FailureData {
+  message: string;
+}
+
+export const FAILURE_KIND = "failure" as const;
+
+export type FailureEnvelope = ResponseEnvelope<typeof FAILURE_KIND, FailureData>;

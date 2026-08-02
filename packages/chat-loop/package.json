@@ -13,10 +13,7 @@
   },
   "dependencies": {
     "@assistant/core": "workspace:*",
-    "@assistant/agents": "workspace:*",
     "@assistant/providers": "workspace:*",
-    "@assistant/prompts": "workspace:*",
-    "@assistant/rendering": "workspace:*",
     "@assistant/db": "workspace:*"
   }
 }
