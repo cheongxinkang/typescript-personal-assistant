@@ -13,13 +13,17 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . && pnpm run deps:check",
     "deps:check": "depcruise apps packages --config .dependency-cruiser.cjs",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "db:generate": "dotenv -e .env -- drizzle-kit generate --config packages/db/drizzle.config.ts",
+    "db:migrate": "dotenv -e .env -- node packages/db/dist/migrate.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
     "@typescript-eslint/eslint-plugin": "^8.21.0",
     "@typescript-eslint/parser": "^8.21.0",
     "dependency-cruiser": "^16.9.0",
+    "dotenv-cli": "^8.0.0",
+    "drizzle-kit": "^0.30.2",
     "eslint": "^9.19.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.4.2",
