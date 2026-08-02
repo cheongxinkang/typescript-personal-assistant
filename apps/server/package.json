@@ -1,0 +1,26 @@
+{
+  "name": "@assistant/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@assistant/core": "workspace:*",
+    "@assistant/channels": "workspace:*",
+    "@assistant/chat-loop": "workspace:*",
+    "@assistant/agents": "workspace:*",
+    "@assistant/tools": "workspace:*",
+    "@assistant/providers": "workspace:*",
+    "@assistant/prompts": "workspace:*",
+    "@assistant/rendering": "workspace:*",
+    "@assistant/db": "workspace:*",
+    "fastify": "^5.2.1",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1",
+    "dotenv": "^16.4.7"
+  }
+}

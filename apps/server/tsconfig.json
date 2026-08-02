@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/channels" },
+    { "path": "../../packages/chat-loop" },
+    { "path": "../../packages/agents" },
+    { "path": "../../packages/tools" },
+    { "path": "../../packages/providers" },
+    { "path": "../../packages/prompts" },
+    { "path": "../../packages/rendering" },
+    { "path": "../../packages/db" }
+  ]
+}

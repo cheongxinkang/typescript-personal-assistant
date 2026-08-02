@@ -1,0 +1,22 @@
+{
+  "name": "@assistant/chat-loop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assistant/core": "workspace:*",
+    "@assistant/agents": "workspace:*",
+    "@assistant/providers": "workspace:*",
+    "@assistant/prompts": "workspace:*",
+    "@assistant/rendering": "workspace:*",
+    "@assistant/db": "workspace:*"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/rendering" },
+    { "path": "packages/channels" },
+    { "path": "packages/db" },
+    { "path": "packages/providers" },
+    { "path": "packages/prompts" },
+    { "path": "packages/tools" },
+    { "path": "packages/agents" },
+    { "path": "packages/chat-loop" },
+    { "path": "apps/server" }
+  ]
+}
