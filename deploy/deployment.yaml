@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistant-server
+  namespace: personal-assistant
+spec:
+  replicas: 1
+  # Recreate, not the default RollingUpdate: a rolling update briefly runs
+  # two pods, which from Stage 5 onward means two scheduler tick loops and
+  # duplicate reminders. See docs/ARCHITECTURE.md §6.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: assistant-server
+  template:
+    metadata:
+      labels:
+        app: assistant-server
+    spec:
+      containers:
+        - name: server
+          # Replace with the real registry path once images are published —
+          # see phase-1-implementation-plan.md's prerequisites.
+          image: ghcr.io/OWNER/typescript-personal-assistant:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: assistant-secrets
+          resources:
+            # Node's --max-old-space-size in the Dockerfile is set relative
+            # to this limit (192m for a 256Mi limit) — update both together.
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30

@@ -32,6 +32,11 @@ export default [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // TypeScript itself catches undefined identifiers more accurately
+      // than eslint can without type-aware parsing (project: false above),
+      // and base no-undef doesn't know about ambient globals like NodeJS —
+      // this is typescript-eslint's own recommended posture for TS files.
+      "no-undef": "off",
     },
   },
   {
