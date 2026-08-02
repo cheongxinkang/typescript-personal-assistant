@@ -1,0 +1,21 @@
+# Tool descriptions and field descriptions — model-facing prose, kept as
+# data per docs/ARCHITECTURE.md §3.0 rule 2. Any syntax promised here (the
+# date-expression grammar) must match what
+# packages/core/src/dateexpr.ts actually accepts — see Requirement 21.
+add_event:
+  description: >
+    Add an event to the owner's schedule. Provide a short title and a date
+    expression describing when it happens. Never provide a resolved
+    timestamp — the backend resolves the expression itself, since models
+    get date arithmetic wrong in exactly the cases that matter (month ends,
+    DST boundaries).
+  fields:
+    title: A short, human-readable title for the event.
+    dateExpression: >
+      When the event happens. Accepted forms: an ISO date (YYYY-MM-DD), the
+      word "today" or "tomorrow", a relative offset like "+3d", or a
+      three-letter weekday abbreviation (mon, tue, wed, thu, fri, sat, sun)
+      meaning the next occurrence of that day — never today, even if today
+      already matches. Optionally followed by a 24-hour time, e.g.
+      "tomorrow 19:00". Omitting the time defaults to the start of that day.
+    durationMinutes: Optional. How long the event lasts, in minutes.

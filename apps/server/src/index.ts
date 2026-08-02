@@ -2,8 +2,15 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import pino from "pino";
-import { CONVERSATIONAL_KIND, FAILURE_KIND, SystemClock } from "@assistant/core";
-import { RenderRegistry, renderConversational, renderFailure } from "@assistant/rendering";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { CONVERSATIONAL_KIND, EVENT_CREATED_KIND, FAILURE_KIND, SystemClock } from "@assistant/core";
+import {
+  RenderRegistry,
+  renderConversational,
+  renderEventCreated,
+  renderFailure,
+} from "@assistant/rendering";
 import { DiscordAdapter } from "@assistant/channels";
 import {
   createDatabase,
@@ -14,10 +21,20 @@ import {
   runMigrations,
   type Database,
 } from "@assistant/db";
-import { AnthropicProvider } from "@assistant/providers";
+import { AnthropicProvider, type LLMToolDefinition } from "@assistant/providers";
 import { runTurn } from "@assistant/chat-loop";
 import { loadAssistantSystemPrompt } from "@assistant/prompts";
+import { buildMcpServer, offeredTools, type ToolContext } from "@assistant/tools";
 import { ConfigError, loadConfig } from "./config.js";
+
+// No per-profile config yet (Stage 8 adds real multi-user/capability) —
+// every tool is enabled for the one owner profile this phase supports.
+// Must stay non-empty: an McpServer with zero registered tools doesn't
+// advertise the tools/list capability at all, so mcpClient.listTools()
+// below would reject rather than resolve to an empty array (verified
+// empirically — see packages/tools/src/mcpServer.test.ts). Harden this
+// call site if a future profile can legitimately have no tools enabled.
+const ENABLED_TOOLS = ["add_event"];
 
 async function checkDatabaseReachable(database: Database): Promise<boolean> {
   try {
@@ -58,15 +75,13 @@ async function main(): Promise<void> {
 
   const registry = new RenderRegistry()
     .register(CONVERSATIONAL_KIND, renderConversational)
+    .register(EVENT_CREATED_KIND, renderEventCreated)
     .register(FAILURE_KIND, renderFailure);
 
   const provider = new AnthropicProvider(config.anthropicApiKey);
   const systemPrompt = loadAssistantSystemPrompt();
   const clock = new SystemClock();
 
-  // Stage 4: a real chat loop, no tools yet — every message reaches the
-  // real model via runTurn, which owns its own history/persistence/usage
-  // recording (see packages/chat-loop/src/runTurn.ts).
   const adapter = new DiscordAdapter(
     { botToken: config.discordBotToken, channelId: config.discordChannelId },
     logger,
@@ -90,24 +105,60 @@ async function main(): Promise<void> {
       return;
     }
 
-    const { envelope } = await runTurn({
+    // Read exactly once for this turn (see packages/core's Clock doc) and
+    // thread it into both runTurn and the tool context below — never two
+    // separate reads. The MCP server is built fresh per turn, not at boot:
+    // its tool handlers close over `toolContext`, and a shared long-lived
+    // context would either go stale (built once at boot) or race under two
+    // concurrent messages (if mutated in place). A fresh server/client pair
+    // costs low-single-digit milliseconds in-process — cheap insurance.
+    const now = clock.now();
+    const toolContext: ToolContext = {
       database,
-      provider,
-      systemPrompt,
-      sessionId: session.id,
-      clock,
+      now,
       ownerTimezone: config.ownerTimezone,
-      onError: (error) => {
-        turnLogger.error(
-          { err: error instanceof Error ? error.message : String(error) },
-          "Provider call failed",
-        );
-      },
-    });
+      ownerUserId: OWNER_USER_ID,
+    };
+    const mcpServer = buildMcpServer(offeredTools(ENABLED_TOOLS), toolContext);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const mcpClient = new McpClient({ name: "assistant-agent", version: "0.0.0" });
+    await Promise.all([mcpServer.connect(serverTransport), mcpClient.connect(clientTransport)]);
+    const { tools: mcpTools } = await mcpClient.listTools();
+    // The MCP protocol allows a tool with no description; ours never do
+    // (packages/tools' ToolDefinition.description is required and loaded
+    // from prompts.yaml, validated non-empty at load time) — this mapping
+    // just narrows the SDK's more permissive type to what we know is true.
+    const tools: LLMToolDefinition[] = mcpTools.map((tool) => ({
+      name: tool.name,
+      description: tool.description ?? "",
+      inputSchema: tool.inputSchema,
+    }));
 
-    const text = registry.render(envelope, { timezone: config.ownerTimezone });
-    await reply.send(text);
-    turnLogger.info({ outcome: envelope.status }, "Reply sent");
+    try {
+      const { text } = await runTurn({
+        database,
+        provider,
+        systemPrompt,
+        sessionId: session.id,
+        now,
+        ownerTimezone: config.ownerTimezone,
+        registry,
+        mcpClient,
+        tools,
+        onError: (error) => {
+          turnLogger.error(
+            { err: error instanceof Error ? error.message : String(error) },
+            "Provider call failed",
+          );
+        },
+      });
+
+      await reply.send(text);
+      turnLogger.info("Reply sent");
+    } finally {
+      await mcpClient.close();
+      await mcpServer.close();
+    }
   });
 
   const app = Fastify({ loggerInstance: logger });

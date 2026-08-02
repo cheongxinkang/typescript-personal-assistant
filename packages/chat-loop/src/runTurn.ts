@@ -1,58 +1,77 @@
 import {
   CONVERSATIONAL_KIND,
+  EVENT_CREATED_KIND,
   FAILURE_KIND,
-  type Clock,
-  type ConversationalEnvelope,
-  type FailureEnvelope,
+  type EventCreatedData,
+  type ResponseEnvelope,
 } from "@assistant/core";
-import type { LLMProvider } from "@assistant/providers";
+import type { LLMProvider, LLMToolDefinition } from "@assistant/providers";
+import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { runAgentTurn } from "@assistant/agents";
 import {
   insertAssistantMessage,
   insertTurnUsage,
   loadRecentHistory,
   type Database,
 } from "@assistant/db";
+import type { RenderRegistry } from "@assistant/rendering";
 import { buildUserMessageEnvelope } from "./contextEnvelope.js";
 
 const DEFAULT_HISTORY_LIMIT = 20;
 const GENERIC_FAILURE_MESSAGE =
   "Sorry, something went wrong talking to the model. Please try again.";
+const BUDGET_EXCEEDED_MESSAGE =
+  "That's taking too long to work through. Please try again or rephrase your request.";
 
 export interface RunTurnParams {
   database: Database;
   provider: LLMProvider;
   systemPrompt: string;
   sessionId: string;
-  clock: Clock;
-  ownerTimezone: string;
-  historyLimit?: number;
   /**
-   * Called with the real error on a provider failure, before the generic
-   * envelope is returned — the caller's chance to log it server-side. The
-   * envelope itself never carries it (see the spec's Security section:
-   * never echo a raw provider error to the user). Optional so a test can
-   * omit it entirely.
+   * The turn's already-read Clock instant — read once by the caller
+   * (apps/server), not here. Both this turn's message envelope and the
+   * per-turn ToolContext the caller builds for the MCP server need the
+   * SAME instant; reading it here as well as there would risk skew
+   * between context assembly and any date resolution a tool performs.
    */
+  now: Date;
+  ownerTimezone: string;
+  /** Composed by the caller (apps/server); runTurn calls it, per ARCHITECTURE.md §2's "chat loop renders". */
+  registry: RenderRegistry;
+  mcpClient: McpClient;
+  tools: LLMToolDefinition[];
+  historyLimit?: number;
   onError?: (error: unknown) => void;
 }
 
-export type RunTurnEnvelope = ConversationalEnvelope | FailureEnvelope;
-
 export interface RunTurnResult {
-  envelope: RunTurnEnvelope;
+  envelope: ResponseEnvelope;
+  text: string;
+}
+
+/**
+ * Maps a successful tool's structuredContent to its envelope kind. Stage 5
+ * has exactly one tool, so this is a plain switch — generalize (e.g. each
+ * ToolDefinition declaring its own envelope kind) only once a second tool
+ * actually needs it.
+ */
+function envelopeForToolResult(toolName: string, toolResult: unknown): ResponseEnvelope {
+  if (toolName === "add_event") {
+    return { status: "success", kind: EVENT_CREATED_KIND, data: toolResult as EventCreatedData };
+  }
+  return { status: "error", kind: FAILURE_KIND, data: { message: GENERIC_FAILURE_MESSAGE } };
 }
 
 /**
  * The conversational call path (Requirement 8): appends to history, and
  * converts any failure into a user-visible envelope rather than throwing —
- * the inverse of workflowCompletion.ts. Owns its own persistence (message +
- * turn_usage) since chat-loop already depends on packages/db; the caller's
- * job is only to have already persisted the user's own message (so history
- * here ends with it) and to render/send whatever envelope comes back.
+ * the inverse of workflowCompletion.ts. Delegates the actual model/tool
+ * round trip to packages/agents' bounded loop; owns history load,
+ * persistence, turn_usage recording, and rendering (ARCHITECTURE.md §2)
+ * itself, since it already depends on packages/db and packages/rendering.
  */
 export async function runTurn(params: RunTurnParams): Promise<RunTurnResult> {
-  const now = params.clock.now(); // read exactly once for this turn
-
   const history = await loadRecentHistory(
     params.database,
     params.sessionId,
@@ -70,39 +89,52 @@ export async function runTurn(params: RunTurnParams): Promise<RunTurnResult> {
     role: row.role,
     content:
       index === lastIndex && row.role === "user"
-        ? buildUserMessageEnvelope(now, params.ownerTimezone, row.content)
+        ? buildUserMessageEnvelope(params.now, params.ownerTimezone, row.content)
         : row.content,
   }));
 
   const startedAtMs = performance.now();
   try {
-    const result = await params.provider.complete({
+    const agentResult = await runAgentTurn({
+      provider: params.provider,
       systemPrompt: params.systemPrompt,
       messages: providerMessages,
+      mcpClient: params.mcpClient,
+      tools: params.tools,
     });
     const latencyMs = Math.round(performance.now() - startedAtMs);
 
-    await insertAssistantMessage(params.database, {
-      sessionId: params.sessionId,
-      content: result.text,
-    });
+    let envelope: ResponseEnvelope;
+    if (agentResult.outcome === "text") {
+      envelope = { status: "success", kind: CONVERSATIONAL_KIND, data: { text: agentResult.text } };
+    } else if (agentResult.outcome === "tool_success") {
+      envelope = envelopeForToolResult(agentResult.toolName ?? "", agentResult.toolResult);
+    } else {
+      // "tool_exhausted" (retries used up without success) or
+      // "budget_exceeded" (Requirement 11) — both a distinct, user-visible
+      // outcome, never a silent truncation.
+      envelope = { status: "error", kind: FAILURE_KIND, data: { message: BUDGET_EXCEEDED_MESSAGE } };
+    }
+
+    const text = params.registry.render(envelope, { timezone: params.ownerTimezone });
+    const outcome = envelope.status === "success" ? "success" : "failure";
+
+    if (outcome === "success") {
+      await insertAssistantMessage(params.database, { sessionId: params.sessionId, content: text });
+    }
     await insertTurnUsage(params.database, {
       sessionId: params.sessionId,
       provider: params.provider.name,
-      model: result.model,
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
-      cacheReadTokens: result.usage.cacheReadTokens,
+      model: agentResult.model,
+      inputTokens: agentResult.usage.inputTokens,
+      outputTokens: agentResult.usage.outputTokens,
+      cacheReadTokens: agentResult.usage.cacheReadTokens,
       latencyMs,
-      outcome: "success",
+      outcome,
+      toolCalls: agentResult.toolCallCount,
     });
 
-    const envelope: ConversationalEnvelope = {
-      status: "success",
-      kind: CONVERSATIONAL_KIND,
-      data: { text: result.text },
-    };
-    return { envelope };
+    return { envelope, text };
   } catch (error) {
     params.onError?.(error);
     const latencyMs = Math.round(performance.now() - startedAtMs);
@@ -118,11 +150,12 @@ export async function runTurn(params: RunTurnParams): Promise<RunTurnResult> {
     });
 
     // Never the raw error text — see the spec's Security section.
-    const envelope: FailureEnvelope = {
+    const envelope: ResponseEnvelope = {
       status: "error",
       kind: FAILURE_KIND,
       data: { message: GENERIC_FAILURE_MESSAGE },
     };
-    return { envelope };
+    const text = params.registry.render(envelope, { timezone: params.ownerTimezone });
+    return { envelope, text };
   }
 }

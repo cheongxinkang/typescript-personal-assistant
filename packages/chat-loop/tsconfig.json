@@ -9,6 +9,8 @@
   "references": [
     { "path": "../core" },
     { "path": "../providers" },
+    { "path": "../agents" },
+    { "path": "../rendering" },
     { "path": "../db" }
   ]
 }

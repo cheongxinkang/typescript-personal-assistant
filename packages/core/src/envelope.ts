@@ -36,3 +36,21 @@ export interface FailureData {
 export const FAILURE_KIND = "failure" as const;
 
 export type FailureEnvelope = ResponseEnvelope<typeof FAILURE_KIND, FailureData>;
+
+/**
+ * A successful add_event call. Built from the row read back after insert
+ * (Requirement 23) — `title`/`startsAt` here are the stored values, never
+ * the model's own restated ones, which is what makes the "stored title
+ * wins" acceptance criterion checkable at all.
+ */
+export interface EventCreatedData {
+  eventId: string;
+  title: string;
+  /** ISO-8601 instant, UTC. */
+  startsAt: string;
+  durationMinutes: number | null;
+}
+
+export const EVENT_CREATED_KIND = "event_created" as const;
+
+export type EventCreatedEnvelope = ResponseEnvelope<typeof EVENT_CREATED_KIND, EventCreatedData>;

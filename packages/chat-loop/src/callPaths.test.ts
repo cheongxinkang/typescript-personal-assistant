@@ -1,10 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { FixedClock } from "@assistant/core";
+import { CONVERSATIONAL_KIND, EVENT_CREATED_KIND, FAILURE_KIND } from "@assistant/core";
 import { FakeProvider } from "@assistant/providers";
+import { RenderRegistry, renderConversational, renderEventCreated, renderFailure } from "@assistant/rendering";
 import { ensureOwnerUser, findOrCreateSession, insertUserMessage, OWNER_USER_ID } from "@assistant/db";
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import { runTurn } from "./runTurn.js";
 import { workflowCompletion } from "./workflowCompletion.js";
+import { buildTestMcpClient } from "./testHelpers/mcp.js";
+
+function registry(): RenderRegistry {
+  return new RenderRegistry()
+    .register(CONVERSATIONAL_KIND, renderConversational)
+    .register(EVENT_CREATED_KIND, renderEventCreated)
+    .register(FAILURE_KIND, renderFailure);
+}
 
 /**
  * Requirement 8, asserted directly as the contract it is: on an identical
@@ -39,6 +48,7 @@ describe("runTurn vs workflowCompletion — failure semantics, as a pair", () =>
     });
 
     const provider = new FakeProvider([new Error("boom")]);
+    const mcpClient = await buildTestMcpClient(() => ({}));
 
     await expect(
       runTurn({
@@ -46,8 +56,11 @@ describe("runTurn vs workflowCompletion — failure semantics, as a pair", () =>
         provider,
         systemPrompt: "sys",
         sessionId: session.id,
-        clock: new FixedClock(new Date("2026-08-02T23:00:00.000Z")),
+        now: new Date("2026-08-02T23:00:00.000Z"),
         ownerTimezone: "Asia/Singapore",
+        registry: registry(),
+        mcpClient,
+        tools: [],
       }),
     ).resolves.toMatchObject({ envelope: { status: "error", kind: "failure" } });
   });

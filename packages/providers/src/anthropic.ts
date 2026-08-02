@@ -1,8 +1,43 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { LLMCompleteParams, LLMProvider, LLMResult } from "./provider.js";
+import type {
+  LLMCompleteParams,
+  LLMContentBlock,
+  LLMMessage,
+  LLMProvider,
+  LLMResult,
+} from "./provider.js";
 
 const DEFAULT_MODEL = "claude-sonnet-5";
 const MAX_TOKENS = 1024;
+
+type AnthropicMessageContentBlock =
+  | Anthropic.TextBlockParam
+  | Anthropic.ToolUseBlockParam
+  | Anthropic.ToolResultBlockParam;
+
+function toAnthropicContent(content: string | LLMContentBlock[]): Anthropic.MessageParam["content"] {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content.map((block): AnthropicMessageContentBlock => {
+    if (block.type === "text") {
+      return { type: "text", text: block.text };
+    }
+    if (block.type === "tool_use") {
+      return { type: "tool_use", id: block.id, name: block.name, input: block.input };
+    }
+    return {
+      type: "tool_result",
+      tool_use_id: block.toolUseId,
+      content: block.content,
+      ...(block.isError !== undefined ? { is_error: block.isError } : {}),
+    };
+  });
+}
+
+function toAnthropicMessage(message: LLMMessage): Anthropic.MessageParam {
+  return { role: message.role, content: toAnthropicContent(message.content) };
+}
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = "anthropic";
@@ -19,10 +54,18 @@ export class AnthropicProvider implements LLMProvider {
       model: this.model,
       max_tokens: MAX_TOKENS,
       system: params.systemPrompt,
-      messages: params.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      messages: params.messages.map(toAnthropicMessage),
+      ...(params.tools
+        ? {
+            tools: params.tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              // The MCP client's listTools() JSON Schema is a superset of
+              // what Anthropic's API needs; extra keys are ignored, not rejected.
+              input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+            })),
+          }
+        : {}),
     });
 
     const text = response.content
@@ -30,16 +73,27 @@ export class AnthropicProvider implements LLMProvider {
       .map((block) => block.text)
       .join("");
 
+    const toolUseBlock = response.content.find(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+    );
+    const toolCall = toolUseBlock
+      ? {
+          id: toolUseBlock.id,
+          name: toolUseBlock.name,
+          input: toolUseBlock.input as Record<string, unknown>,
+        }
+      : undefined;
+
     return {
       text,
+      toolCall,
       model: response.model,
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
         // @anthropic-ai/sdk@0.32.1's stable Usage type has no cache-read
-        // field yet (it's beta-only, under a different client surface at
-        // this SDK version). Always 0 until Stage 6 wires up real prompt
-        // caching, at which point this is worth an SDK bump too.
+        // field yet (beta-only at this SDK version). Always 0 until
+        // Stage 6 wires up real prompt caching, worth an SDK bump then.
         cacheReadTokens: 0,
       },
     };

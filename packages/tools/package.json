@@ -15,6 +15,7 @@
     "@assistant/core": "workspace:*",
     "@assistant/db": "workspace:*",
     "@assistant/prompts": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^3.24.1"
   }
 }
