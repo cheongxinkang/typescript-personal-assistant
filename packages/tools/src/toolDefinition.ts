@@ -25,4 +25,12 @@ export interface ToolDefinition<TInput = never, TOutput = unknown> {
   description: string;
   inputShape: ZodRawShape;
   handler: (input: TInput, context: ToolContext) => Promise<TOutput>;
+  /**
+   * The response-envelope `kind` this tool's successful result maps to
+   * (Requirement 13). Carried on the tool definition itself, not derived by
+   * a per-tool-name switch in packages/chat-loop — that switch was fine for
+   * exactly one tool (Phase 1) but stops scaling the moment a second one
+   * exists, which Phase 2 does.
+   */
+  kind: string;
 }

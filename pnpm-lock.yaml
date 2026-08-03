@@ -177,9 +177,16 @@ importers:
       '@assistant/db':
         specifier: workspace:*
         version: link:../db
+      luxon:
+        specifier: ^3.5.0
+        version: 3.7.2
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+    devDependencies:
+      '@types/luxon':
+        specifier: ^3.4.2
+        version: 3.7.2
 
   packages/prompts:
     dependencies:

@@ -15,7 +15,11 @@ export const renderEventCreated: Renderer<EventCreatedData> = (
   const durationNote = data.durationWasDefaulted
     ? ` (defaulted to ${data.durationMinutes} min — say a duration if that's wrong)`
     : "";
-  return `${data.title} — ${when} — added to your schedule.${durationNote}`;
+  const clashNote =
+    data.clashesWith.length > 0
+      ? ` Heads up — this overlaps ${data.clashesWith.length === 1 ? "another event" : `${data.clashesWith.length} other events`} already on your schedule.`
+      : "";
+  return `${data.title} — ${when} — added to your schedule.${durationNote}${clashNote}`;
 };
 
 export { EVENT_CREATED_KIND };

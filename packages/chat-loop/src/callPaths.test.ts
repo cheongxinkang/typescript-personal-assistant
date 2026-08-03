@@ -61,6 +61,7 @@ describe("runTurn vs workflowCompletion — failure semantics, as a pair", () =>
         registry: registry(),
         mcpClient,
         tools: [],
+        toolKinds: {},
       }),
     ).resolves.toMatchObject({ envelope: { status: "error", kind: "failure" } });
   });
