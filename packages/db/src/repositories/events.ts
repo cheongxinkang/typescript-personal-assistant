@@ -6,10 +6,14 @@ export type EventRow = typeof events.$inferSelect;
 
 /**
  * Insert-only (ARCHITECTURE.md §4) — there is deliberately no update/delete
- * function here. A status change or edit is a new row sharing `eventId`,
- * added when Stage 5's add_event/set_event_status land. This function
- * exists now so the table and the fold view (below) are provable from
- * Stage 2, even though nothing calls it in production until Stage 5.
+ * function here. A status change, move, split, or completion is a new row
+ * sharing `eventId`, built via packages/db's carryForward helper by the
+ * domain layer (Stage 3), not by enumerating fields here.
+ *
+ * `durationMinutes` became required in Stage 2 (phase-2-tools.md
+ * Requirement 12) — the caller (packages/domain) is responsible for
+ * applying DEFAULT_EVENT_MINUTES before calling this; this layer only
+ * enforces that some value is always given, matching the NOT NULL column.
  */
 export async function insertEventRow(
   database: Database,
@@ -18,7 +22,13 @@ export async function insertEventRow(
     userId: string;
     title: string;
     startsAt: Date;
-    durationMinutes?: number;
+    durationMinutes: number;
+    status?: EventRow["status"];
+    taskId?: string;
+    parentEventId?: string;
+    partIndex?: number;
+    movedFromEventId?: string;
+    actualMinutes?: number;
     sourceMessageId?: string;
   },
 ): Promise<EventRow> {
@@ -30,6 +40,12 @@ export async function insertEventRow(
       title: params.title,
       startsAt: params.startsAt,
       durationMinutes: params.durationMinutes,
+      status: params.status,
+      taskId: params.taskId,
+      parentEventId: params.parentEventId,
+      partIndex: params.partIndex,
+      movedFromEventId: params.movedFromEventId,
+      actualMinutes: params.actualMinutes,
       sourceMessageId: params.sourceMessageId,
     })
     .returning();

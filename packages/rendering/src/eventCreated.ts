@@ -12,7 +12,10 @@ export const renderEventCreated: Renderer<EventCreatedData> = (
   context: RenderContext,
 ) => {
   const when = formatDateTime(new Date(data.startsAt), context.timezone);
-  return `${data.title} — ${when} — added to your schedule.`;
+  const durationNote = data.durationWasDefaulted
+    ? ` (defaulted to ${data.durationMinutes} min — say a duration if that's wrong)`
+    : "";
+  return `${data.title} — ${when} — added to your schedule.${durationNote}`;
 };
 
 export { EVENT_CREATED_KIND };

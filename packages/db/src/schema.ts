@@ -60,11 +60,86 @@ export const messages = pgTable(
 );
 
 /**
+ * Insert-only per ARCHITECTURE.md §4 — a project revision (status change,
+ * task_generation_status transition) is a new row sharing `projectId`,
+ * never an UPDATE. See phase-2-tools.md Requirement 5.
+ */
+export const projects = pgTable(
+  "projects",
+  {
+    rowId: uuid("row_id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    title: text("title").notNull(),
+    description: text("description"),
+    // Backend-resolved from a date expression, like events.startsAt.
+    targetDate: timestamp("target_date", { withTimezone: true }),
+    status: text("status", { enum: ["active", "completed", "archived"] })
+      .notNull()
+      .default("active"),
+    // Requirement 24 — the domain function sets this explicitly per insert
+    // (e.g. "ready" immediately when there's no description to generate
+    // from); the column default is only a fallback, never relied upon.
+    taskGenerationStatus: text("task_generation_status", {
+      enum: ["pending", "generating", "ready", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("projects_project_id_idx").on(table.projectId)],
+);
+
+/**
+ * Insert-only. `projectId` is a plain indexed uuid, not a foreign key: fold
+ * keys are shared across every revision of an entity, so they're never
+ * unique and can't be an FK target (the same reason `events.eventId` below
+ * has an index, not a constraint). Referential integrity across entities is
+ * enforced in packages/domain, not in the schema.
+ */
+export const tasks = pgTable(
+  "tasks",
+  {
+    rowId: uuid("row_id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id").notNull().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    projectId: uuid("project_id"),
+    title: text("title").notNull(),
+    description: text("description"),
+    estimatedMinutes: integer("estimated_minutes"),
+    // Backend-resolved from a date expression, like events.startsAt.
+    deadline: timestamp("deadline", { withTimezone: true }),
+    status: text("status", { enum: ["open", "completed", "cancelled"] })
+      .notNull()
+      .default("open"),
+    // Requirement 24's discard reporting needs to distinguish a
+    // user-authored task from a generated one.
+    source: text("source", { enum: ["user", "generated"] })
+      .notNull()
+      .default("user"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("tasks_task_id_idx").on(table.taskId), index("tasks_project_id_idx").on(table.projectId)],
+);
+
+/**
  * Insert-only per ARCHITECTURE.md §4's classification — never UPDATE, never
- * DELETE outside retention. `eventId` is the fold key (Requirement 25);
- * `rowId` is only this row's own identity. Phase 1 only ever inserts (no
- * add_event tool until Stage 5), but the table, the fold view below, and
- * the fold test all exist from this stage.
+ * DELETE outside retention. `eventId` is the fold key (Requirement 25 of
+ * Phase 1); `rowId` is only this row's own identity.
+ *
+ * Widened in Phase 2 Stage 2 (phase-2-tools.md): `durationMinutes` is now
+ * required (Requirement 12 — deletes two workaround rules the prior
+ * implementation needed for a durationless event); `status` gained four
+ * values; `taskId`/`parentEventId`/`partIndex`/`movedFromEventId`/
+ * `actualMinutes` support task linkage, splitting (Requirement 15), and
+ * reschedule lineage (Requirement 8). None of these five new columns is a
+ * foreign key, for the same reason `taskId` above isn't — they reference
+ * fold keys, which are never unique.
  */
 export const events = pgTable(
   "events",
@@ -80,12 +155,24 @@ export const events = pgTable(
     title: text("title").notNull(),
     // Backend-resolved (Requirement 21) — never model-supplied.
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
-    durationMinutes: integer("duration_minutes"),
-    status: text("status", { enum: ["planned"] }).notNull().default("planned"),
+    // NOT NULL as of Stage 2 (Requirement 12) — DEFAULT_EVENT_MINUTES (30)
+    // is applied by the domain layer, never relied upon as a DB default,
+    // so the column itself carries none.
+    durationMinutes: integer("duration_minutes").notNull(),
+    status: text("status", {
+      enum: ["proposed", "planned", "completed", "rescheduled", "cancelled"],
+    })
+      .notNull()
+      .default("planned"),
+    taskId: uuid("task_id"),
+    parentEventId: uuid("parent_event_id"),
+    partIndex: integer("part_index"),
+    movedFromEventId: uuid("moved_from_event_id"),
+    actualMinutes: integer("actual_minutes"),
     sourceMessageId: uuid("source_message_id").references(() => messages.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("events_event_id_idx").on(table.eventId)],
+  (table) => [index("events_event_id_idx").on(table.eventId), index("events_task_id_idx").on(table.taskId)],
 );
 
 export const turnUsage = pgTable("turn_usage", {
@@ -121,9 +208,27 @@ export const eventsCurrent = pgView("events_current").as((qb) =>
     .orderBy(events.eventId, desc(events.createdAt), desc(events.rowId)),
 );
 
+/** The fold: latest row per project_id. Same tie-break rule as events_current. */
+export const projectsCurrent = pgView("projects_current").as((qb) =>
+  qb
+    .selectDistinctOn([projects.projectId])
+    .from(projects)
+    .orderBy(projects.projectId, desc(projects.createdAt), desc(projects.rowId)),
+);
+
+/** The fold: latest row per task_id. Same tie-break rule as events_current. */
+export const tasksCurrent = pgView("tasks_current").as((qb) =>
+  qb
+    .selectDistinctOn([tasks.taskId])
+    .from(tasks)
+    .orderBy(tasks.taskId, desc(tasks.createdAt), desc(tasks.rowId)),
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   events: many(events),
+  projects: many(projects),
+  tasks: many(tasks),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({

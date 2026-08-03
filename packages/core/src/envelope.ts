@@ -48,7 +48,12 @@ export interface EventCreatedData {
   title: string;
   /** ISO-8601 instant, UTC. */
   startsAt: string;
-  durationMinutes: number | null;
+  // NOT NULL as of Phase 2 Stage 2 (phase-2-tools.md Requirement 12) — a
+  // durationless event no longer exists; a missing model-supplied value is
+  // defaulted by the domain layer before this is ever built.
+  durationMinutes: number;
+  /** True when the model omitted a duration and DEFAULT_EVENT_MINUTES was applied. */
+  durationWasDefaulted: boolean;
 }
 
 export const EVENT_CREATED_KIND = "event_created" as const;
