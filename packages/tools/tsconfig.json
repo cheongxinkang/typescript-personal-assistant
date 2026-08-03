@@ -10,6 +10,7 @@
     { "path": "../core" },
     { "path": "../db" },
     { "path": "../domain" },
-    { "path": "../prompts" }
+    { "path": "../prompts" },
+    { "path": "../providers" }
   ]
 }

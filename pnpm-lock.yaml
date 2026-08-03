@@ -183,6 +183,12 @@ importers:
       '@assistant/db':
         specifier: workspace:*
         version: link:../db
+      '@assistant/prompts':
+        specifier: workspace:*
+        version: link:../prompts
+      '@assistant/providers':
+        specifier: workspace:*
+        version: link:../providers
       luxon:
         specifier: ^3.5.0
         version: 3.7.2
@@ -235,6 +241,9 @@ importers:
       '@assistant/prompts':
         specifier: workspace:*
         version: link:../prompts
+      '@assistant/providers':
+        specifier: workspace:*
+        version: link:../providers
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@3.25.76)

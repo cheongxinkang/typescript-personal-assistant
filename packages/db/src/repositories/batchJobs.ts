@@ -42,6 +42,11 @@ export async function listNonTerminalBatchJobs(database: Database): Promise<Batc
   return database.db.select().from(batchJobs).where(inArray(batchJobs.status, [...NON_TERMINAL_STATUSES]));
 }
 
+/** Jobs the poller has confirmed finished processing but Stage 6's apply step hasn't touched yet. */
+export async function listEndedBatchJobs(database: Database): Promise<BatchJobRow[]> {
+  return database.db.select().from(batchJobs).where(eq(batchJobs.status, "ended"));
+}
+
 export async function updateBatchJob(
   database: Database,
   id: string,

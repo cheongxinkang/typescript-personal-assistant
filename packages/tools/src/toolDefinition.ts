@@ -1,6 +1,7 @@
 import type { ZodRawShape } from "zod";
 import type { Database } from "@assistant/db";
 import type { DayShape } from "@assistant/domain";
+import type { BatchProvider } from "@assistant/providers";
 
 /**
  * Requirement 9's "the time is already in hand" rule applies to tools too:
@@ -14,6 +15,8 @@ export interface ToolContext {
   ownerUserId: string;
   /** Stage 4: only update_event's split action reads this — see DomainContext.dayShape. */
   dayShape?: DayShape;
+  /** Stage 6: only add_project and generate_schedule read this, to submit their batch requests. */
+  batchProvider?: BatchProvider;
 }
 
 /**

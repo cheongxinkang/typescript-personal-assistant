@@ -5,3 +5,7 @@ export * from "./eventCreated.js";
 export * from "./schedule.js";
 export * from "./task.js";
 export * from "./eventUpdated.js";
+export * from "./projectAdded.js";
+export * from "./generationSubmitted.js";
+export * from "./scheduleConfirmed.js";
+export * from "./batchWorkflowResults.js";
