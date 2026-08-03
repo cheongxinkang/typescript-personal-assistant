@@ -1,10 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ensureOwnerUser, OWNER_USER_ID } from "@assistant/db";
+import { ensureOwnerUser, insertProjectRow, OWNER_USER_ID } from "@assistant/db";
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import { addTask } from "./addTask.js";
 import type { DomainContext } from "./context.js";
 import { listTasks, listTasksInputSchema } from "./listTasks.js";
 import { updateTask } from "./updateTask.js";
+
+function allTasks(groups: { tasks: { title: string; taskId: string; status: string }[] }[]) {
+  return groups.flatMap((group) => group.tasks);
+}
 
 describe("listTasks (domain)", () => {
   let testDb: TestDatabase;
@@ -30,7 +34,7 @@ describe("listTasks (domain)", () => {
 
     const result = await listTasks(testDb.database, {}, context(now));
 
-    const titles = result.tasks.map((task) => task.title);
+    const titles = allTasks(result.groups).map((task) => task.title);
     expect(titles).toContain(open.title);
     expect(titles).not.toContain(toComplete.title);
   });
@@ -42,8 +46,36 @@ describe("listTasks (domain)", () => {
 
     const result = await listTasks(testDb.database, { status: "cancelled" }, context(now));
 
-    expect(result.tasks.some((task) => task.taskId === toCancel.taskId)).toBe(true);
-    expect(result.tasks.every((task) => task.status === "cancelled")).toBe(true);
+    const tasks = allTasks(result.groups);
+    expect(tasks.some((task) => task.taskId === toCancel.taskId)).toBe(true);
+    expect(tasks.every((task) => task.status === "cancelled")).toBe(true);
+  });
+
+  it("groups tasks by project, sorted by project title, with project-less tasks in a final group", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const projectB = await insertProjectRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Zeta project",
+      taskGenerationStatus: "ready",
+    });
+    const projectA = await insertProjectRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Alpha project",
+      taskGenerationStatus: "ready",
+    });
+    await addTask(testDb.database, { title: "Task in zeta", projectId: projectB.projectId }, context(now));
+    await addTask(testDb.database, { title: "Task in alpha", projectId: projectA.projectId }, context(now));
+    await addTask(testDb.database, { title: "Standalone task" }, context(now));
+
+    const result = await listTasks(testDb.database, {}, context(now));
+
+    const relevant = result.groups.filter((group) =>
+      group.tasks.some((task) =>
+        ["Task in zeta", "Task in alpha", "Standalone task"].includes(task.title),
+      ),
+    );
+    expect(relevant.map((group) => group.projectTitle)).toEqual(["Alpha project", "Zeta project", null]);
+    expect(relevant.at(-1)?.projectId).toBeNull();
   });
 
   describe("listTasksInputSchema", () => {

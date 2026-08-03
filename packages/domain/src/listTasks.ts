@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { TaskListData } from "@assistant/core";
-import { listTasksForOwner, type Database } from "@assistant/db";
+import type { TaskListData, TaskListGroup } from "@assistant/core";
+import { getCurrentProject, listTasksForOwner, type Database } from "@assistant/db";
 import type { DomainContext } from "./context.js";
 import { toTaskData } from "./taskData.js";
 
@@ -15,6 +15,11 @@ export type ListTasksInput = z.infer<typeof listTasksInputSchema>;
  * there was no way to read tasks back at all — only get_schedule (events)
  * and add/update. Defaults to `open`, since "what are my tasks" almost
  * always means the still-outstanding ones; an explicit status widens it.
+ *
+ * Grouped by project rather than returned flat — a flat list mixing several
+ * projects' tasks with standalone ones read as an undifferentiated wall of
+ * text once there was more than a handful (found during the same pass).
+ * Project-less tasks land in one final group so they're never dropped.
  */
 export async function listTasks(
   database: Database,
@@ -22,5 +27,34 @@ export async function listTasks(
   context: DomainContext,
 ): Promise<TaskListData> {
   const rows = await listTasksForOwner(database, context.ownerUserId, input.status ?? "open");
-  return { tasks: rows.map((row) => toTaskData(row, [])) };
+
+  const tasksByProjectId = new Map<string, ReturnType<typeof toTaskData>[]>();
+  const ungrouped: ReturnType<typeof toTaskData>[] = [];
+  for (const row of rows) {
+    const task = toTaskData(row, []);
+    if (row.projectId) {
+      const existing = tasksByProjectId.get(row.projectId);
+      if (existing) {
+        existing.push(task);
+      } else {
+        tasksByProjectId.set(row.projectId, [task]);
+      }
+    } else {
+      ungrouped.push(task);
+    }
+  }
+
+  const projectGroups: TaskListGroup[] = [];
+  for (const [projectId, tasks] of tasksByProjectId) {
+    const project = await getCurrentProject(database, projectId);
+    projectGroups.push({ projectId, projectTitle: project?.title ?? null, tasks });
+  }
+  projectGroups.sort((a, b) => (a.projectTitle ?? "").localeCompare(b.projectTitle ?? ""));
+
+  const groups = [...projectGroups];
+  if (ungrouped.length > 0) {
+    groups.push({ projectId: null, projectTitle: null, tasks: ungrouped });
+  }
+
+  return { groups };
 }
