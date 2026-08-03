@@ -7,7 +7,12 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
-      include: ["packages/tools/src/**", "packages/db/src/**", "packages/chat-loop/src/**"],
+      include: [
+        "packages/domain/src/**",
+        "packages/tools/src/**",
+        "packages/db/src/**",
+        "packages/chat-loop/src/**",
+      ],
       // apps/server and packages/channels are deliberately excluded from the
       // coverage gate — see docs/product-specs/phase-1-vertical-slice.md's
       // Test plan. They are proven by integration and manual tests instead.

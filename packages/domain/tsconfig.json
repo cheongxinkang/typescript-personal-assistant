@@ -6,10 +6,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../db" },
-    { "path": "../domain" },
-    { "path": "../prompts" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../db" }]
 }
