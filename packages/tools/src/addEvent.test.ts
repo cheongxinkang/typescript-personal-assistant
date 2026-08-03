@@ -36,7 +36,8 @@ describe("addEventTool.handler", () => {
     expect(result.title).toBe("Dinner with Cheryl");
     expect(result.startsAt).toBe("2026-08-03T11:00:00.000Z"); // 2026-08-03T19:00 SGT
     expect(result.eventId).toBeDefined();
-    expect(result.durationMinutes).toBeNull();
+    expect(result.durationMinutes).toBe(30); // DEFAULT_EVENT_MINUTES
+    expect(result.durationWasDefaulted).toBe(true);
   });
 
   it("throws DateExpressionError for an unresolvable expression, writing no row", async () => {

@@ -8,7 +8,8 @@ describe("renderEventCreated", () => {
         eventId: "e1",
         title: "Dinner with Cheryl",
         startsAt: "2026-08-02T23:00:00.000Z", // 2026-08-03T07:00 SGT
-        durationMinutes: null,
+        durationMinutes: 60,
+        durationWasDefaulted: false,
       },
       { timezone: "Asia/Singapore" },
     );
@@ -18,9 +19,29 @@ describe("renderEventCreated", () => {
 
   it("uses the stored title, not anything else", () => {
     const text = renderEventCreated(
-      { eventId: "e1", title: "Stored Title", startsAt: "2026-08-02T23:00:00.000Z", durationMinutes: null },
+      {
+        eventId: "e1",
+        title: "Stored Title",
+        startsAt: "2026-08-02T23:00:00.000Z",
+        durationMinutes: 60,
+        durationWasDefaulted: false,
+      },
       { timezone: "Asia/Singapore" },
     );
     expect(text).toContain("Stored Title");
+  });
+
+  it("states the default was applied, per phase-2-tools.md Requirement 12", () => {
+    const text = renderEventCreated(
+      {
+        eventId: "e1",
+        title: "Standup",
+        startsAt: "2026-08-02T23:00:00.000Z",
+        durationMinutes: 30,
+        durationWasDefaulted: true,
+      },
+      { timezone: "Asia/Singapore" },
+    );
+    expect(text).toContain("defaulted to 30 min");
   });
 });

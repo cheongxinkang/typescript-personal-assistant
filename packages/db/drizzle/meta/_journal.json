@@ -15,6 +15,13 @@
       "when": 1785657959883,
       "tag": "0001_wandering_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785767697633,
+      "tag": "0002_cultured_purifiers",
+      "breakpoints": true
     }
   ]
 }

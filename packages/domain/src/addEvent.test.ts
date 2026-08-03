@@ -41,7 +41,8 @@ describe("addEvent (domain)", () => {
     expect(result.title).toBe("Dinner with Cheryl");
     expect(result.startsAt).toBe("2026-08-03T11:00:00.000Z"); // 2026-08-03T19:00 SGT
     expect(result.eventId).toBeDefined();
-    expect(result.durationMinutes).toBeNull();
+    expect(result.durationMinutes).toBe(30); // DEFAULT_EVENT_MINUTES
+    expect(result.durationWasDefaulted).toBe(true);
   });
 
   it("throws DateExpressionError for an unresolvable expression, writing no row", async () => {
@@ -51,7 +52,7 @@ describe("addEvent (domain)", () => {
     ).rejects.toThrow(DateExpressionError);
   });
 
-  it("stores an optional durationMinutes", async () => {
+  it("stores an explicit durationMinutes without defaulting", async () => {
     const now = new Date("2026-08-02T04:00:00.000Z");
     const result = await addEvent(
       testDb.database,
@@ -59,6 +60,7 @@ describe("addEvent (domain)", () => {
       context(now),
     );
     expect(result.durationMinutes).toBe(15);
+    expect(result.durationWasDefaulted).toBe(false);
   });
 
   describe("addEventInputSchema", () => {
