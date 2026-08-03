@@ -4,6 +4,7 @@ export * from "./failure.js";
 export * from "./eventCreated.js";
 export * from "./schedule.js";
 export * from "./task.js";
+export * from "./taskList.js";
 export * from "./eventUpdated.js";
 export * from "./projectAdded.js";
 export * from "./generationSubmitted.js";

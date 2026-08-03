@@ -15,6 +15,7 @@ import {
   SCHEDULE_KIND,
   SystemClock,
   TASK_ADDED_KIND,
+  TASK_LIST_KIND,
   TASK_UPDATED_KIND,
 } from "@assistant/core";
 import {
@@ -28,6 +29,7 @@ import {
   renderSchedule,
   renderScheduleConfirmed,
   renderTaskAdded,
+  renderTaskList,
   renderTaskUpdated,
 } from "@assistant/rendering";
 import { DiscordAdapter } from "@assistant/channels";
@@ -67,6 +69,7 @@ const ENABLED_TOOLS = [
   "add_project",
   "generate_schedule",
   "confirm_schedule",
+  "list_tasks",
 ];
 
 async function checkDatabaseReachable(database: Database): Promise<boolean> {
@@ -130,6 +133,7 @@ async function main(): Promise<void> {
     .register(PROJECT_ADDED_KIND, renderProjectAdded)
     .register(GENERATION_SUBMITTED_KIND, renderGenerationSubmitted)
     .register(SCHEDULE_CONFIRMED_KIND, renderScheduleConfirmed)
+    .register(TASK_LIST_KIND, renderTaskList)
     .register(FAILURE_KIND, renderFailure);
 
   const provider = new AnthropicProvider(config.anthropicApiKey);
@@ -162,7 +166,7 @@ async function main(): Promise<void> {
           database,
           batchProvider,
           adapter,
-          { ownerUserId: OWNER_USER_ID, ownerTimezone: config.ownerTimezone, dayShape },
+          { ownerUserId: OWNER_USER_ID, ownerTimezone: config.ownerTimezone, dayShape, sessionId: session.id },
           logger,
         ),
       )

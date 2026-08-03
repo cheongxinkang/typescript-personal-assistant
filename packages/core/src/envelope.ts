@@ -123,6 +123,20 @@ export const TASK_UPDATED_KIND = "task_updated" as const;
 export type TaskUpdatedEnvelope = ResponseEnvelope<typeof TASK_UPDATED_KIND, TaskData>;
 
 /**
+ * list_tasks' result — added during Stage 7's real end-to-end pass, which
+ * surfaced that there was no read path for tasks at all (only add/update).
+ * Mirrors get_schedule's read-only shape rather than reusing TaskAddedData's
+ * kind, since a list is a different result shape (many tasks, not one).
+ */
+export interface TaskListData {
+  tasks: TaskData[];
+}
+
+export const TASK_LIST_KIND = "task_list" as const;
+
+export type TaskListEnvelope = ResponseEnvelope<typeof TASK_LIST_KIND, TaskListData>;
+
+/**
  * update_event's result across all four actions (Requirement 8, 15, 16).
  * One shape covers all of them rather than one type per action, since the
  * tool itself is one operation with a discriminated `action` field
