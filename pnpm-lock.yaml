@@ -169,6 +169,18 @@ importers:
         specifier: ^10.16.0
         version: 10.28.0
 
+  packages/domain:
+    dependencies:
+      '@assistant/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assistant/db':
+        specifier: workspace:*
+        version: link:../db
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
   packages/prompts:
     dependencies:
       yaml:
@@ -201,6 +213,9 @@ importers:
       '@assistant/db':
         specifier: workspace:*
         version: link:../db
+      '@assistant/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@assistant/prompts':
         specifier: workspace:*
         version: link:../prompts

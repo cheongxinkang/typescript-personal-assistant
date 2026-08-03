@@ -3,6 +3,10 @@
  *   - packages/tools and packages/db never import packages/agents or packages/channels.
  *   - packages/rendering depends only on packages/core (the envelope type) —
  *     never chat-loop, agents, channels, or db.
+ *   - packages/domain (Phase 2) may import db/core only — never tools,
+ *     agents, chat-loop, channels, or rendering. It must be callable from a
+ *     tool, an HTTP handler, or a batch workflow with no transport-specific
+ *     dependency — see docs/product-specs/phase-2-tools.md, Requirement 2.
  * pnpm's strict node_modules layout already blocks most of this by refusing
  * to resolve an undeclared workspace dependency; this catches the rest
  * (relative-path escapes, and anything pnpm's resolution wouldn't).
@@ -16,6 +20,14 @@ module.exports = {
         "packages/tools must be callable without booting a chat session — see ARCHITECTURE.md §1.",
       from: { path: "^packages/tools" },
       to: { path: "^packages/(agents|channels)" },
+    },
+    {
+      name: "no-domain-importing-upper-layers",
+      severity: "error",
+      comment:
+        "packages/domain must be transport-agnostic — callable from a tool, an HTTP handler, or a batch workflow alike. See phase-2-tools.md Requirement 2.",
+      from: { path: "^packages/domain" },
+      to: { path: "^packages/(tools|agents|chat-loop|channels|rendering)" },
     },
     {
       name: "no-db-importing-agents-or-channels",

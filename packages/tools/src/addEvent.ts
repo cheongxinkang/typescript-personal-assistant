@@ -1,61 +1,41 @@
-import { z } from "zod";
-import { resolveDateExpression, type EventCreatedData } from "@assistant/core";
-import { insertEventRow } from "@assistant/db";
+import type { EventCreatedData } from "@assistant/core";
+import { addEvent, addEventInputSchema, type AddEventInput } from "@assistant/domain";
 import { loadToolPrompt, requireToolField } from "@assistant/prompts";
 import type { ToolDefinition } from "./toolDefinition.js";
 
 const prompt = loadToolPrompt("add_event");
 
-export interface AddEventInput {
-  title: string;
-  dateExpression: string;
-  durationMinutes?: number;
-}
+export type { AddEventInput };
 
+/**
+ * Phase 2 Stage 1: the validation logic itself now lives in
+ * @assistant/domain's addEventInputSchema (Requirement 3 — one schema, one
+ * source of truth for what's valid). This layer only adds the model-facing
+ * `.describe()` text, which is prompt data and therefore belongs here, not
+ * in the transport-agnostic domain package.
+ */
 export const addEventInputShape = {
-  title: z
-    .string()
-    .min(1, "title must not be empty")
-    .max(200)
-    .describe(requireToolField(prompt, "add_event", "title")),
-  dateExpression: z.string().min(1).describe(requireToolField(prompt, "add_event", "dateExpression")),
-  durationMinutes: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe(requireToolField(prompt, "add_event", "durationMinutes")),
+  title: addEventInputSchema.shape.title.describe(requireToolField(prompt, "add_event", "title")),
+  dateExpression: addEventInputSchema.shape.dateExpression.describe(
+    requireToolField(prompt, "add_event", "dateExpression"),
+  ),
+  durationMinutes: addEventInputSchema.shape.durationMinutes.describe(
+    requireToolField(prompt, "add_event", "durationMinutes"),
+  ),
 };
 
 export const addEventTool: ToolDefinition<AddEventInput, EventCreatedData> = {
   name: "add_event",
   description: prompt.description,
   inputShape: addEventInputShape,
-  handler: async (input, context) => {
-    // Requirement 21: the backend resolves the expression, never the
-    // model. resolveDateExpression throws DateExpressionError on
-    // unresolvable input; that's left to propagate — the MCP layer turns a
-    // thrown handler error into an isError:true tool result automatically
-    // (confirmed empirically before writing this), which is exactly the
-    // "clean validation error returned to the model" the requirement asks for.
-    const startsAt = resolveDateExpression(input.dateExpression, context.now, context.ownerTimezone);
-
-    const row = await insertEventRow(context.database, {
-      userId: context.ownerUserId,
-      title: input.title,
-      startsAt,
-      durationMinutes: input.durationMinutes,
-    });
-
-    // Requirement 23: built from the row read back after insert, never
-    // from `input` — a model that restates a different title can never
-    // have that title win over what was actually stored.
-    const result: EventCreatedData = {
-      eventId: row.eventId,
-      title: row.title,
-      startsAt: row.startsAt.toISOString(),
-      durationMinutes: row.durationMinutes,
-    };
-    return result;
-  },
+  // A thin adapter — every rule (date resolution, record construction,
+  // "return the row read back after insert") lives in the domain function.
+  // This is what Requirement 4's contract test proves: calling this handler
+  // and calling addEvent() directly must be indistinguishable.
+  handler: (input, context) =>
+    addEvent(context.database, input, {
+      now: context.now,
+      ownerTimezone: context.ownerTimezone,
+      ownerUserId: context.ownerUserId,
+    }),
 };

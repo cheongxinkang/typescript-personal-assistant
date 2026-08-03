@@ -25,38 +25,54 @@ import ruleSet from "../.dependency-cruiser.cjs";
  * so both are done by hand below. This only affects this test, not the real
  * `deps:check` script.
  */
+async function cruiseFixture(
+  fixtureDirName: string,
+): Promise<{ summary: { violations: Array<{ rule: { name: string } }>; error: number } }> {
+  const fixtureRoot = path.resolve(import.meta.dirname, "fixtures", fixtureDirName);
+  const originalCwd = process.cwd();
+  process.chdir(fixtureRoot);
+
+  // options.tsConfig points at the repo root's tsconfig.json by relative
+  // path, which resolves against cwd. It only supports path-alias
+  // resolution the fixtures don't use, so it's dropped here rather than
+  // resolved against the fixture root.
+  const { tsConfig: _tsConfig, ...optionsWithoutTsConfig } = ruleSet.options;
+
+  try {
+    const result = await cruise(
+      ["packages"],
+      {
+        ruleSet: { forbidden: ruleSet.forbidden },
+        outputType: "json",
+        validate: true,
+        ...optionsWithoutTsConfig,
+      },
+      undefined,
+      undefined,
+    );
+    return typeof result.output === "string" ? JSON.parse(result.output) : result.output;
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
 describe("dependency boundary rules", () => {
   it("flags packages/tools importing packages/agents as a violation", async () => {
-    const fixtureRoot = path.resolve(import.meta.dirname, "fixtures/boundary-violation");
-    const originalCwd = process.cwd();
-    process.chdir(fixtureRoot);
-
-    // options.tsConfig points at the repo root's tsconfig.json by relative
-    // path, which resolves against cwd. It only supports path-alias
-    // resolution the fixture doesn't use, so it's dropped here rather than
-    // resolved against the fixture root.
-    const { tsConfig: _tsConfig, ...optionsWithoutTsConfig } = ruleSet.options;
-
-    let output: { summary: { violations: Array<{ rule: { name: string } }>; error: number } };
-    try {
-      const result = await cruise(
-        ["packages"],
-        {
-          ruleSet: { forbidden: ruleSet.forbidden },
-          outputType: "json",
-          validate: true,
-          ...optionsWithoutTsConfig,
-        },
-        undefined,
-        undefined,
-      );
-      output = typeof result.output === "string" ? JSON.parse(result.output) : result.output;
-    } finally {
-      process.chdir(originalCwd);
-    }
+    const output = await cruiseFixture("boundary-violation");
 
     const violation = output.summary.violations.find(
       (v) => v.rule.name === "no-tools-importing-agents-or-channels",
+    );
+
+    expect(violation).toBeDefined();
+    expect(output.summary.error).toBeGreaterThan(0);
+  });
+
+  it("flags packages/domain importing packages/tools as a violation", async () => {
+    const output = await cruiseFixture("domain-boundary-violation");
+
+    const violation = output.summary.violations.find(
+      (v) => v.rule.name === "no-domain-importing-upper-layers",
     );
 
     expect(violation).toBeDefined();
