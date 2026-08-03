@@ -14,7 +14,7 @@ describe("offeredTools", () => {
     expect(offeredTools(["not_a_real_tool"])).toEqual([]);
   });
 
-  it("ALL_TOOLS contains all eight tools shipped through Stage 6", () => {
+  it("ALL_TOOLS contains all nine tools shipped through Stage 7", () => {
     expect(ALL_TOOLS.map((t) => t.name)).toEqual([
       "get_schedule",
       "add_event",
@@ -24,6 +24,7 @@ describe("offeredTools", () => {
       "add_project",
       "generate_schedule",
       "confirm_schedule",
+      "list_tasks",
     ]);
   });
 

@@ -1,5 +1,5 @@
 import type { ChannelAdapter } from "@assistant/core";
-import { listEndedBatchJobs, type Database } from "@assistant/db";
+import { insertAssistantMessage, listEndedBatchJobs, type Database } from "@assistant/db";
 import {
   applyProjectBreakdown,
   applyScheduleGeneration,
@@ -24,15 +24,29 @@ import type { PollLogger } from "./poller.js";
  * departs from `runTurn`'s pattern: there is no inbound message to reply
  * to, so the result — success or failure — is sent as a new, unprompted
  * message via `ChannelAdapter.sendToConfiguredChannel`.
+ *
+ * That message is also persisted via `insertAssistantMessage` — found
+ * missing during Stage 7's real end-to-end pass: without it, the message
+ * genuinely reached Discord but a later conversational turn's history load
+ * never saw it, so the model had no way to know generation had finished
+ * and answered a follow-up question from a stale, hallucinated guess
+ * instead. Every other assistant reply goes through `runTurn`, which
+ * already does this; this is the one path that doesn't run through
+ * `runTurn` at all, so it has to do it explicitly.
  */
 export async function applyEndedBatchJobsOnce(
   database: Database,
   batchProvider: BatchProvider,
   adapter: ChannelAdapter,
-  context: { ownerUserId: string; ownerTimezone: string; dayShape: DayShape },
+  context: { ownerUserId: string; ownerTimezone: string; dayShape: DayShape; sessionId: string },
   logger: PollLogger,
 ): Promise<void> {
   const jobs = await listEndedBatchJobs(database);
+
+  async function sendAndRecord(text: string): Promise<void> {
+    await adapter.sendToConfiguredChannel(text);
+    await insertAssistantMessage(database, { sessionId: context.sessionId, content: text });
+  }
 
   for (const job of jobs) {
     try {
@@ -40,7 +54,7 @@ export async function applyEndedBatchJobsOnce(
         const result = await applyProjectBreakdown(database, batchProvider, job, {
           ownerUserId: context.ownerUserId,
         });
-        await adapter.sendToConfiguredChannel(renderProjectBreakdownApplied(result));
+        await sendAndRecord(renderProjectBreakdownApplied(result));
         logger.info({ batchJobId: job.id }, "Project task breakdown applied");
       } else {
         const result = await applyScheduleGeneration(database, batchProvider, job, {
@@ -48,7 +62,7 @@ export async function applyEndedBatchJobsOnce(
           ownerTimezone: context.ownerTimezone,
           dayShape: context.dayShape,
         });
-        await adapter.sendToConfiguredChannel(renderScheduleGenerationApplied(result));
+        await sendAndRecord(renderScheduleGenerationApplied(result));
         logger.info({ batchJobId: job.id }, "Schedule generation applied");
       }
     } catch (error) {
@@ -57,7 +71,7 @@ export async function applyEndedBatchJobsOnce(
           job.kind === "project_task_breakdown"
             ? renderProjectBreakdownFailed({ category: error.category })
             : renderScheduleGenerationFailed({ category: error.category });
-        await adapter.sendToConfiguredChannel(text);
+        await sendAndRecord(text);
         logger.error({ batchJobId: job.id, category: error.category }, "Batch apply failed");
         continue;
       }

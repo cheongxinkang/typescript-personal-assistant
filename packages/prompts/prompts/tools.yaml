@@ -123,3 +123,13 @@ confirm_schedule:
     actually agreed to the proposal — never on your own initiative.
   fields:
     generationRunId: The id of the generation run to confirm, from its announcement message.
+
+list_tasks:
+  description: >
+    Read back the owner's tasks. Use this before answering any question
+    about what tasks exist or their status — never guess or rely on
+    conversation history for it. Defaults to open tasks only.
+  fields:
+    status: >
+      Optional. One of "open", "completed", or "cancelled". Omit to list
+      only open tasks.
