@@ -68,6 +68,9 @@ importers:
       '@assistant/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@assistant/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@assistant/prompts':
         specifier: workspace:*
         version: link:../../packages/prompts
@@ -92,6 +95,9 @@ importers:
       pino:
         specifier: ^9.6.0
         version: 9.14.0
+      yaml:
+        specifier: ^2.7.0
+        version: 2.9.0
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -187,6 +193,9 @@ importers:
       '@types/luxon':
         specifier: ^3.4.2
         version: 3.7.2
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
 
   packages/prompts:
     dependencies:

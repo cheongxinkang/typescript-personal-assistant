@@ -1,9 +1,18 @@
 import { z } from "zod";
 import { resolveDateExpression, type EventUpdatedData } from "@assistant/core";
-import { carryForward, getCurrentEvent, insertEventRow, type Database, type EventRow } from "@assistant/db";
+import {
+  carryForward,
+  getCurrentEvent,
+  insertEventRow,
+  listEventsInRange,
+  type Database,
+  type EventRow,
+} from "@assistant/db";
 import { findClashes } from "./clash.js";
+import { GENERATION_HORIZON_DAYS } from "./constants.js";
 import type { DomainContext } from "./context.js";
 import { NotFoundError } from "./errors.js";
+import { deriveBusyIntervals, placeTasks } from "./placement.js";
 
 export const updateEventInputSchema = z.discriminatedUnion("action", [
   z.object({
@@ -44,6 +53,7 @@ function toEventUpdatedData(
   action: EventUpdatedData["action"],
   clashesWith: string[],
   remainderMinutes: number | null,
+  remainder: { eventId: string; startsAt: Date } | null = null,
 ): EventUpdatedData {
   return {
     action,
@@ -55,6 +65,8 @@ function toEventUpdatedData(
     actualMinutes: row.actualMinutes,
     clashesWith,
     remainderMinutes,
+    remainderEventId: remainder?.eventId ?? null,
+    remainderStartsAt: remainder?.startsAt.toISOString() ?? null,
     movedFromEventId: row.movedFromEventId,
   };
 }
@@ -147,8 +159,55 @@ export async function updateEvent(
     actualMinutes: input.completedMinutes,
   });
   const row = await insertEventRow(database, toInsertParams(carried));
-  // No placement function exists yet (Stage 4 adds it) — the remainder is
-  // reported, never written as an unscheduled row: events.startsAt is
-  // NOT NULL (Stage 2), so there is no way to store "not yet scheduled."
-  return toEventUpdatedData(row, "split", [], remainderMinutes);
+
+  // Requirement 15: place the remainder into the next free slot, now that
+  // Stage 4 has a placement function. `context.dayShape` is optional
+  // (tests may omit it to exercise the report-only fallback deliberately;
+  // apps/server always supplies it in production) — without it, or if no
+  // slot exists in the horizon, the remainder is reported as a bare number
+  // rather than written as an unscheduled row (events.startsAt is NOT
+  // NULL, so there is no way to store "not yet scheduled").
+  if (context.dayShape) {
+    const remainderStart = new Date(
+      Math.max(current.startsAt.getTime() + current.durationMinutes * 60_000, context.now.getTime()),
+    );
+    const horizonEnd = new Date(context.now.getTime() + GENERATION_HORIZON_DAYS * 24 * 60 * 60_000);
+
+    const existingEvents = await listEventsInRange(database, {
+      userId: context.ownerUserId,
+      startInclusive: remainderStart,
+      endExclusive: horizonEnd,
+    });
+    const busy = deriveBusyIntervals(
+      existingEvents.filter((event) => event.status === "planned" || event.status === "completed"),
+    );
+
+    const { placements } = placeTasks([{ id: "remainder", durationMinutes: remainderMinutes }], {
+      horizonStart: remainderStart,
+      horizonEnd,
+      dayShape: context.dayShape,
+      timezone: context.ownerTimezone,
+      busy,
+    });
+    const placement = placements[0];
+
+    if (placement) {
+      const remainderRow = await insertEventRow(database, {
+        userId: context.ownerUserId,
+        title: current.title,
+        startsAt: placement.startsAt,
+        durationMinutes: remainderMinutes,
+        status: "planned",
+        taskId: current.taskId ?? undefined,
+        parentEventId: current.eventId,
+        partIndex: 2,
+      });
+      return toEventUpdatedData(row, "split", [], null, {
+        eventId: remainderRow.eventId,
+        startsAt: remainderRow.startsAt,
+      });
+    }
+  }
+
+  return toEventUpdatedData(row, "split", [], remainderMinutes, null);
 }
