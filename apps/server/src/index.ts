@@ -39,6 +39,7 @@ import { runTurn } from "@assistant/chat-loop";
 import { loadAssistantSystemPrompt } from "@assistant/prompts";
 import { buildMcpServer, offeredTools, type ToolContext } from "@assistant/tools";
 import { ConfigError, loadConfig } from "./config.js";
+import { DayShapeConfigError, loadDayShape } from "./dayShape.js";
 
 // No per-profile config yet (Stage 8 adds real multi-user/capability) —
 // every tool is enabled for the one owner profile this phase supports.
@@ -67,6 +68,20 @@ async function main(): Promise<void> {
   } catch (error) {
     if (error instanceof ConfigError) {
       logger.fatal({ err: error.message }, "Refusing to start with invalid configuration");
+      process.exit(1);
+    }
+    throw error;
+  }
+
+  // Requirement 18/decision 13: the day shape is a checked-in config file,
+  // validated the same fail-fast way as env config — a malformed one must
+  // never let the process come up half-configured.
+  let dayShape;
+  try {
+    dayShape = loadDayShape();
+  } catch (error) {
+    if (error instanceof DayShapeConfigError) {
+      logger.fatal({ err: error.message }, "Refusing to start with invalid day-shape configuration");
       process.exit(1);
     }
     throw error;
@@ -135,6 +150,7 @@ async function main(): Promise<void> {
       now,
       ownerTimezone: config.ownerTimezone,
       ownerUserId: OWNER_USER_ID,
+      dayShape,
     };
     const enabledToolDefinitions = offeredTools(ENABLED_TOOLS);
     // Requirement 13/28: each tool declares which envelope kind its result

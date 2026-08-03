@@ -8,6 +8,8 @@ const base = {
   durationMinutes: 60,
   clashesWith: [] as string[],
   remainderMinutes: null,
+  remainderEventId: null,
+  remainderStartsAt: null,
   movedFromEventId: null,
 };
 
@@ -52,5 +54,22 @@ describe("renderEventUpdated", () => {
       { timezone: "Asia/Singapore" },
     );
     expect(text).not.toContain("remaining");
+  });
+
+  it("reports the remainder's scheduled time when placement succeeded (Stage 4)", () => {
+    const text = renderEventUpdated(
+      {
+        ...base,
+        action: "split",
+        status: "completed",
+        actualMinutes: 30,
+        remainderMinutes: null,
+        remainderEventId: "e-remainder",
+        remainderStartsAt: "2026-08-04T01:00:00.000Z",
+      },
+      { timezone: "Asia/Singapore" },
+    );
+    expect(text).toContain("Remaining time scheduled for");
+    expect(text).not.toContain("not yet scheduled");
   });
 });

@@ -18,6 +18,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/luxon": "^3.4.2"
+    "@types/luxon": "^3.4.2",
+    "fast-check": "^4.9.0"
   }
 }

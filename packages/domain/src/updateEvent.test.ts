@@ -204,6 +204,68 @@ describe("updateEvent (domain)", () => {
       expect(result.status).toBe("completed");
       expect(result.remainderMinutes).toBeNull();
     });
+
+    it("places the remainder as a real event when a day shape is supplied — Stage 4", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z"); // Sunday, 12:00 SGT
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Migrate posts, take 2",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"), // Monday 09:00 SGT
+        durationMinutes: 120,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "split", eventId: event.eventId, completedMinutes: 60 },
+        {
+          now,
+          ownerTimezone: "Asia/Singapore",
+          ownerUserId: OWNER_USER_ID,
+          dayShape: {
+            monday: { start: "09:00", end: "17:00" },
+            tuesday: { start: "09:00", end: "17:00" },
+            wednesday: { start: "09:00", end: "17:00" },
+            thursday: { start: "09:00", end: "17:00" },
+            friday: { start: "09:00", end: "17:00" },
+          },
+        },
+      );
+
+      expect(result.remainderMinutes).toBeNull();
+      expect(result.remainderEventId).toBeDefined();
+      expect(result.remainderStartsAt).toBeDefined();
+
+      // The remainder must be findable as a real, folded event row.
+      const remainderRow = await getCurrentEvent(testDb.database, result.remainderEventId ?? "");
+      expect(remainderRow?.durationMinutes).toBe(60);
+      expect(remainderRow?.parentEventId).toBe(event.eventId);
+      expect(remainderRow?.status).toBe("planned");
+    });
+
+    it("falls back to reporting the remainder when no free slot exists in the horizon", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "No room task",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 60,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "split", eventId: event.eventId, completedMinutes: 30 },
+        {
+          now,
+          ownerTimezone: "Asia/Singapore",
+          ownerUserId: OWNER_USER_ID,
+          // No days enabled at all — nowhere in the horizon can ever fit.
+          dayShape: {},
+        },
+      );
+
+      expect(result.remainderEventId).toBeNull();
+      expect(result.remainderMinutes).toBe(30);
+    });
   });
 
   it("throws NotFoundError for a well-formed but non-existent eventId", async () => {

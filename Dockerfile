@@ -14,6 +14,7 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/rendering/package.json packages/rendering/package.json
 COPY packages/channels/package.json packages/channels/package.json
 COPY packages/db/package.json packages/db/package.json
+COPY packages/domain/package.json packages/domain/package.json
 COPY packages/providers/package.json packages/providers/package.json
 COPY packages/prompts/package.json packages/prompts/package.json
 COPY packages/tools/package.json packages/tools/package.json
@@ -41,6 +42,10 @@ ENV NODE_ENV=production
 COPY --from=build /out/dist ./dist
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /out/package.json ./package.json
+# Requirement 18/decision 13: the owner's day shape is a checked-in config
+# file, not a Kubernetes Secret/ConfigMap — it isn't sensitive, and baking it
+# into the image keeps it versioned with the code that enforces it.
+COPY config ./config
 
 # Node sizes its heap from host memory, not the cgroup limit — set
 # explicitly to ~75% of the container memory limit set in deploy/deployment.yaml
