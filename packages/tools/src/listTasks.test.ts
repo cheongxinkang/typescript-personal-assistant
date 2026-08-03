@@ -27,6 +27,7 @@ describe("listTasksTool.handler", () => {
 
     const result = await listTasksTool.handler({}, context(now));
 
-    expect(result.tasks.some((task) => task.title === "Pick a static site generator")).toBe(true);
+    const tasks = result.groups.flatMap((group) => group.tasks);
+    expect(tasks.some((task) => task.title === "Pick a static site generator")).toBe(true);
   });
 });
