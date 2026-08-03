@@ -9,3 +9,5 @@ export * from "./repositories/events.js";
 export * from "./repositories/projects.js";
 export * from "./repositories/tasks.js";
 export * from "./repositories/turnUsage.js";
+export * from "./repositories/batchJobs.js";
+export * from "./repositories/generationRuns.js";

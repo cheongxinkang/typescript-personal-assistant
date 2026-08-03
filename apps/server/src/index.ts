@@ -34,12 +34,15 @@ import {
   runMigrations,
   type Database,
 } from "@assistant/db";
-import { AnthropicProvider, type LLMToolDefinition } from "@assistant/providers";
+import { AnthropicBatchProvider, AnthropicProvider, type LLMToolDefinition } from "@assistant/providers";
 import { runTurn } from "@assistant/chat-loop";
 import { loadAssistantSystemPrompt } from "@assistant/prompts";
 import { buildMcpServer, offeredTools, type ToolContext } from "@assistant/tools";
 import { ConfigError, loadConfig } from "./config.js";
 import { DayShapeConfigError, loadDayShape } from "./dayShape.js";
+import { pollBatchJobsOnce } from "./poller.js";
+
+const POLL_INTERVAL_MS = 60_000;
 
 // No per-profile config yet (Stage 8 adds real multi-user/capability) —
 // every tool is enabled for the one owner profile this phase supports.
@@ -111,8 +114,24 @@ async function main(): Promise<void> {
     .register(FAILURE_KIND, renderFailure);
 
   const provider = new AnthropicProvider(config.anthropicApiKey);
+  const batchProvider = new AnthropicBatchProvider(config.anthropicApiKey);
   const systemPrompt = loadAssistantSystemPrompt();
   const clock = new SystemClock();
+
+  // Stage 5's one scheduler concern: batch-job status polling. Each tick
+  // reads its own instant (a workflow tick, not a conversational turn — the
+  // Clock rule about a single per-turn read is about one turn, not one
+  // process lifetime). Errors are caught per-job inside pollBatchJobsOnce
+  // itself; a rejection here would only happen for something outside that,
+  // logged rather than crashing the process.
+  const pollTimer = setInterval(() => {
+    pollBatchJobsOnce(database, batchProvider, clock.now(), logger).catch((error) => {
+      logger.error(
+        { err: error instanceof Error ? error.message : String(error) },
+        "Batch poller tick failed",
+      );
+    });
+  }, POLL_INTERVAL_MS);
 
   const adapter = new DiscordAdapter(
     { botToken: config.discordBotToken, channelId: config.discordChannelId },
@@ -226,6 +245,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down");
+    clearInterval(pollTimer);
     await adapter.stop();
     await app.close();
     await database.client.end();
