@@ -25,7 +25,7 @@ export interface Placement {
   startsAt: Date;
 }
 
-export type OverflowReason = "no_estimate" | "deadline_passed" | "no_free_interval";
+export type OverflowReason = "no_estimate" | "deadline_passed" | "no_free_interval" | "dependency_unmet";
 
 export interface OverflowItem {
   id: string;
@@ -165,10 +165,24 @@ function findFreeSlot(
 /**
  * Requirement 18: first-fit forward, no backfilling. Candidates are placed
  * in the order given — the caller (Stage 6's generation) is responsible for
- * ordering by deadline first, since this function trusts that order rather
- * than re-sorting. A single monotonic `cursor` (never reset backward) is
- * what makes "no backfilling" true: once a gap has been passed over, it is
- * never reconsidered for a later candidate, even one that would fit it.
+ * ordering by deadline first, and task-dependencies-implementation-plan.md's
+ * Stage 3 additionally requires dependency order (`applyDependencyOrder`) —
+ * since this function trusts the given order rather than re-sorting. A
+ * single monotonic `cursor` (never reset backward) is what makes "no
+ * backfilling" true: once a gap has been passed over, it is never
+ * reconsidered for a later candidate, even one that would fit it.
+ *
+ * A candidate's `dependsOn` only blocks it if the dependency is *also* a
+ * candidate here (in `candidateIds`) and did *not* end up placed
+ * (`placedIds`) — a dependency outside this run (already completed, or not
+ * part of this generation) imposes nothing. This is what makes
+ * `applyDependencyOrder`'s reordering actually mean something: without this
+ * check, a dependency that itself overflowed (e.g. a `deadline_passed`
+ * dependency the owner never marked done) would silently let its dependent
+ * get placed anyway, since ordering alone only controls *when in the loop*
+ * a candidate is tried, not *whether its prerequisite actually succeeded*.
+ * Correctness depends on dependencies being visited before their dependents
+ * — guaranteed by `applyDependencyOrder` having already run.
  *
  * Never truncates or drops silently — every candidate ends up in either
  * `placements` or `overflow`, always with a reason (Requirement 25's
@@ -182,8 +196,17 @@ export function placeTasks(
   let cursor = params.horizonStart;
   const placements: Placement[] = [];
   const overflow: OverflowItem[] = [];
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+  const placedIds = new Set<string>();
 
   for (const candidate of candidates) {
+    const unmetDependency = (candidate.dependsOn ?? []).some(
+      (depId) => candidateIds.has(depId) && !placedIds.has(depId),
+    );
+    if (unmetDependency) {
+      overflow.push({ id: candidate.id, reason: "dependency_unmet" });
+      continue;
+    }
     if (candidate.durationMinutes == null) {
       overflow.push({ id: candidate.id, reason: "no_estimate" });
       continue;
@@ -202,6 +225,7 @@ export function placeTasks(
     }
 
     placements.push({ id: candidate.id, startsAt: slot.start });
+    placedIds.add(candidate.id);
     occupied = mergeIntervals([...occupied, slot]);
     cursor = slot.end;
   }
