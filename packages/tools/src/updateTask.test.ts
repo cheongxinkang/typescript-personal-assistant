@@ -44,4 +44,17 @@ describe("updateTaskTool.handler", () => {
     expect(result.taskId).toBe(task.taskId);
     expect(result.status).toBe("completed");
   });
+
+  it("sets a dependency by title through the flat wire shape — the real MCP call shape", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    await insertTaskRow(testDb.database, { userId: OWNER_USER_ID, title: "Finish module 4" });
+    const exam = await insertTaskRow(testDb.database, { userId: OWNER_USER_ID, title: "Mock exam" });
+
+    const result = await updateTaskTool.handler(
+      { action: "edit", taskId: exam.taskId, dependsOn: ["Finish module 4"] },
+      context(now),
+    );
+
+    expect(result.dependsOnTitles).toEqual(["Finish module 4"]);
+  });
 });
