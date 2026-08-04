@@ -1,30 +1,44 @@
 import { z } from "zod";
 import { resolveDateExpression, type TaskData } from "@assistant/core";
-import {
-  carryForward,
-  getCurrentTask,
-  insertTaskRow,
-  listNonCancelledEventsByTaskId,
-  type Database,
-  type TaskRow,
-} from "@assistant/db";
+import { carryForward, insertTaskRow, listNonCancelledEventsByTaskId, type Database, type TaskRow } from "@assistant/db";
 import { MAX_TASK_MINUTES } from "./constants.js";
 import type { DomainContext } from "./context.js";
-import { NotFoundError } from "./errors.js";
+import { resolveTaskReference } from "./resolveReference.js";
 import { toTaskData } from "./taskData.js";
 
-export const updateTaskInputSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("complete"), taskId: z.string().min(1) }),
-  z.object({ action: z.literal("cancel"), taskId: z.string().min(1) }),
-  z.object({
-    action: z.literal("edit"),
-    taskId: z.string().min(1),
-    title: z.string().min(1).max(200).optional(),
-    description: z.string().max(2000).optional(),
-    estimatedMinutes: z.number().int().positive().max(MAX_TASK_MINUTES).optional(),
-    deadline: z.string().min(1).optional(),
-  }),
-]);
+/**
+ * `taskId` OR `title` — never both, never neither, enforced by the
+ * `.refine()` below. Same reasoning as `update_event`'s identical split —
+ * see `resolveReference.ts`. `edit`'s own `title` field (a *new* title to
+ * set) and the reference `title` field (which task to act on) share a name
+ * at the wire-schema level; the domain schema below keeps them distinct
+ * (`title` selects the task, `newTitle` renames it) to avoid exactly that
+ * ambiguity.
+ */
+const referenceShape = {
+  taskId: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+};
+
+function hasExactlyOneReference(data: { taskId?: string; title?: string }): boolean {
+  return (data.taskId ? 1 : 0) + (data.title ? 1 : 0) === 1;
+}
+
+export const updateTaskInputSchema = z
+  .discriminatedUnion("action", [
+    z.object({ action: z.literal("complete"), ...referenceShape }),
+    z.object({ action: z.literal("cancel"), ...referenceShape }),
+    z.object({
+      action: z.literal("edit"),
+      taskId: z.string().min(1).optional(),
+      title: z.string().min(1).optional(),
+      newTitle: z.string().min(1).max(200).optional(),
+      description: z.string().max(2000).optional(),
+      estimatedMinutes: z.number().int().positive().max(MAX_TASK_MINUTES).optional(),
+      deadline: z.string().min(1).optional(),
+    }),
+  ])
+  .refine(hasExactlyOneReference, { message: "Provide exactly one of taskId or title." });
 
 export type UpdateTaskInput = z.infer<typeof updateTaskInputSchema>;
 
@@ -58,10 +72,12 @@ export async function updateTask(
   input: UpdateTaskInput,
   context: DomainContext,
 ): Promise<TaskData> {
-  const current = await getCurrentTask(database, input.taskId);
-  if (!current) {
-    throw new NotFoundError("task", input.taskId);
-  }
+  const current = await resolveTaskReference(
+    database,
+    context.ownerUserId,
+    { id: input.taskId, title: input.title },
+    context.ownerTimezone,
+  );
 
   if (input.action === "complete" && current.status === "completed") {
     return toTaskData(current, await orphanedEventIdsFor(database, current.taskId));
@@ -80,7 +96,7 @@ export async function updateTask(
       ? resolveDateExpression(input.deadline, context.now, context.ownerTimezone)
       : current.deadline;
     overrides = {
-      title: input.title ?? current.title,
+      title: input.newTitle ?? current.title,
       description: input.description ?? current.description,
       estimatedMinutes: input.estimatedMinutes ?? current.estimatedMinutes,
       deadline,

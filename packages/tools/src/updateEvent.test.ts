@@ -36,4 +36,22 @@ describe("updateEventTool.handler", () => {
 
     expect(result.status).toBe("cancelled");
   });
+
+  it("resolves by title through the flat wire shape — the real MCP call shape", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const event = await insertEventRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Call with Lin",
+      startsAt: new Date("2026-08-03T01:00:00.000Z"),
+      durationMinutes: 30,
+    });
+
+    const result = await updateEventTool.handler(
+      { action: "complete", title: "call with lin", actualMinutes: 160 },
+      context(now),
+    );
+
+    expect(result.eventId).toBe(event.eventId);
+    expect(result.status).toBe("completed");
+  });
 });

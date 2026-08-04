@@ -55,12 +55,19 @@ add_task:
 update_task:
   description: >
     Change an existing task: mark it complete, cancel it, or edit its
-    details. Look up its id from a prior add_task result or from the
-    schedule/task list — never guess one.
+    details. Identify which task by exactly one of `taskId` (if already
+    known, e.g. from earlier this same turn) or `title` (a search term
+    matched against open tasks) — never guess an id. If `title` matches
+    more than one open task, the call fails naming each match; ask the
+    owner which one is meant and retry with a more specific title.
   fields:
     action: One of "complete", "cancel", or "edit".
-    taskId: The id of the task to change.
-    title: Optional, only for action "edit". A new title for the task.
+    taskId: The id of the task to change, if already known. Exactly one of taskId or title.
+    title: >
+      A search term matched against open tasks' titles (case-insensitive,
+      partial match) to find the one to change. Exactly one of taskId or
+      title. Not the same as `newTitle` below.
+    newTitle: Optional, only for action "edit". A new title for the task.
     description: Optional, only for action "edit". A new description for the task.
     estimatedMinutes: Optional, only for action "edit". A new time estimate, in minutes.
     deadline: >
@@ -71,11 +78,24 @@ update_event:
   description: >
     Change an existing event: mark it complete, cancel it, move it to a
     new time, or split it into a completed portion and a remaining
-    portion. Look up its id from a prior add_event or get_schedule result —
-    never guess one.
+    portion. Identify which event by exactly one of `eventId` (if already
+    known, e.g. from earlier this same turn) or `title` (a search term
+    matched against upcoming/unresolved events) — never guess an id. If
+    `title` matches more than one event, the call fails naming each match
+    with its time; ask the owner which one is meant and retry, adding
+    `dateHint` or a more specific title.
   fields:
     action: One of "complete", "cancel", "move", or "split".
-    eventId: The id of the event to change.
+    eventId: The id of the event to change, if already known. Exactly one of eventId or title.
+    title: >
+      A search term matched against event titles (case-insensitive,
+      partial match) to find the one to change. Exactly one of eventId or
+      title.
+    dateHint: >
+      Optional, only used alongside `title`. Narrows the search to one
+      calendar day, in the same date-expression forms as add_event's
+      dateExpression — use this to disambiguate when a title alone matches
+      more than one event.
     actualMinutes: >
       Optional, only for action "complete". How long it actually took, in
       minutes, if different from the planned duration.

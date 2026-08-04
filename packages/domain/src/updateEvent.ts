@@ -1,34 +1,48 @@
 import { z } from "zod";
 import { resolveDateExpression, type EventUpdatedData } from "@assistant/core";
-import {
-  carryForward,
-  getCurrentEvent,
-  insertEventRow,
-  listEventsInRange,
-  type Database,
-  type EventRow,
-} from "@assistant/db";
+import { carryForward, insertEventRow, listEventsInRange, type Database, type EventRow } from "@assistant/db";
 import { findClashes } from "./clash.js";
 import { GENERATION_HORIZON_DAYS } from "./constants.js";
 import type { DomainContext } from "./context.js";
-import { NotFoundError } from "./errors.js";
+import { resolveEventReference } from "./resolveReference.js";
 import { toEventInsertParams } from "./eventRowParams.js";
 import { deriveBusyIntervals, placeTasks } from "./placement.js";
 
-export const updateEventInputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("complete"),
-    eventId: z.string().min(1),
-    actualMinutes: z.number().int().positive().optional(),
-  }),
-  z.object({ action: z.literal("cancel"), eventId: z.string().min(1) }),
-  z.object({ action: z.literal("move"), eventId: z.string().min(1), dateExpression: z.string().min(1) }),
-  z.object({
-    action: z.literal("split"),
-    eventId: z.string().min(1),
-    completedMinutes: z.number().int().positive(),
-  }),
-]);
+/**
+ * `eventId` OR `title` (optionally with `dateHint`) — never both, never
+ * neither, enforced by the `.refine()` below. `title` exists because
+ * "look up the id from a prior get_schedule result" (the original design)
+ * was structurally unreachable: the agent loop ends a turn at its first
+ * successful tool call, so a lookup call and this write could never happen
+ * in the same turn, and no renderer surfaces a raw id for a later turn to
+ * reuse either. See `resolveReference.ts`.
+ */
+const referenceShape = {
+  eventId: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  dateHint: z.string().min(1).optional(),
+};
+
+function hasExactlyOneReference(data: { eventId?: string; title?: string }): boolean {
+  return (data.eventId ? 1 : 0) + (data.title ? 1 : 0) === 1;
+}
+
+export const updateEventInputSchema = z
+  .discriminatedUnion("action", [
+    z.object({
+      action: z.literal("complete"),
+      ...referenceShape,
+      actualMinutes: z.number().int().positive().optional(),
+    }),
+    z.object({ action: z.literal("cancel"), ...referenceShape }),
+    z.object({ action: z.literal("move"), ...referenceShape, dateExpression: z.string().min(1) }),
+    z.object({
+      action: z.literal("split"),
+      ...referenceShape,
+      completedMinutes: z.number().int().positive(),
+    }),
+  ])
+  .refine(hasExactlyOneReference, { message: "Provide exactly one of eventId or title." });
 
 export type UpdateEventInput = z.infer<typeof updateEventInputSchema>;
 
@@ -66,10 +80,13 @@ export async function updateEvent(
   input: UpdateEventInput,
   context: DomainContext,
 ): Promise<EventUpdatedData> {
-  const current = await getCurrentEvent(database, input.eventId);
-  if (!current) {
-    throw new NotFoundError("event", input.eventId);
-  }
+  const current = await resolveEventReference(
+    database,
+    context.ownerUserId,
+    { id: input.eventId, title: input.title, dateHint: input.dateHint },
+    context.now,
+    context.ownerTimezone,
+  );
 
   if (input.action === "complete") {
     // Idempotent — completing an already-completed event is a no-op read,

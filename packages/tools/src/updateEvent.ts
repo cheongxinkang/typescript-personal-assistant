@@ -11,7 +11,9 @@ export const updateEventInputShape = {
   action: z
     .enum(["complete", "cancel", "move", "split"])
     .describe(requireToolField(prompt, "update_event", "action")),
-  eventId: z.string().min(1).describe(requireToolField(prompt, "update_event", "eventId")),
+  eventId: z.string().min(1).optional().describe(requireToolField(prompt, "update_event", "eventId")),
+  title: z.string().min(1).optional().describe(requireToolField(prompt, "update_event", "title")),
+  dateHint: z.string().min(1).optional().describe(requireToolField(prompt, "update_event", "dateHint")),
   actualMinutes: z
     .number()
     .int()
