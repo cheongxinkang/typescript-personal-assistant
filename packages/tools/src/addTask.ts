@@ -17,6 +17,7 @@ export const addTaskInputShape = {
   ),
   deadline: addTaskInputSchema.shape.deadline.describe(requireToolField(prompt, "add_task", "deadline")),
   projectId: addTaskInputSchema.shape.projectId.describe(requireToolField(prompt, "add_task", "projectId")),
+  dependsOn: addTaskInputSchema.shape.dependsOn.describe(requireToolField(prompt, "add_task", "dependsOn")),
 };
 
 export const addTaskTool: ToolDefinition<AddTaskInput, TaskData> = {
