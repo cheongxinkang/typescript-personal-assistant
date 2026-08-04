@@ -76,14 +76,17 @@ update_task:
 
 update_event:
   description: >
-    Change an existing event: mark it complete, cancel it, move it to a
-    new time, or split it into a completed portion and a remaining
-    portion. Identify which event by exactly one of `eventId` (if already
-    known, e.g. from earlier this same turn) or `title` (a search term
-    matched against upcoming/unresolved events) — never guess an id. If
-    `title` matches more than one event, the call fails naming each match
-    with its time; ask the owner which one is meant and retry, adding
-    `dateHint` or a more specific title.
+    Change an existing event: mark it complete, cancel it, move/resize it,
+    or split it into a completed portion and a remaining portion. Identify
+    which event by exactly one of `eventId` (if already known, e.g. from
+    earlier this same turn) or `title` (a search term matched against
+    upcoming/unresolved events) — never guess an id. If `title` matches
+    more than one event, the call fails naming each match with its time;
+    ask the owner which one is meant and retry, adding `dateHint` or a more
+    specific title. For action "move", never cancel and re-add an event to
+    change its time or length — that is two separate writes and this tool
+    cannot make both in one call; use "move" with `dateExpression`,
+    `durationMinutes`, or both instead, which does it atomically.
   fields:
     action: One of "complete", "cancel", "move", or "split".
     eventId: The id of the event to change, if already known. Exactly one of eventId or title.
@@ -100,8 +103,16 @@ update_event:
       Optional, only for action "complete". How long it actually took, in
       minutes, if different from the planned duration.
     dateExpression: >
-      Required for action "move". The new time, in the same forms as
-      add_event's dateExpression.
+      Only for action "move". The new time, in the same forms as
+      add_event's dateExpression. Omit to keep the event's current time
+      while only changing its duration. At least one of dateExpression or
+      durationMinutes is required for "move".
+    durationMinutes: >
+      Only for action "move". The event's new length, in minutes — use
+      this for "make it longer/shorter" or "resize" requests instead of
+      cancelling and re-adding. Omit to keep the event's current duration
+      while only changing its time. At least one of dateExpression or
+      durationMinutes is required for "move".
     completedMinutes: >
       Required for action "split". How many minutes were actually
       completed; the rest is reported as remaining, to be scheduled

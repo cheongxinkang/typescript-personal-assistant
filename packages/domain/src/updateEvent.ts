@@ -2,7 +2,7 @@ import { z } from "zod";
 import { resolveDateExpression, type EventUpdatedData } from "@assistant/core";
 import { carryForward, insertEventRow, listEventsInRange, type Database, type EventRow } from "@assistant/db";
 import { findClashes } from "./clash.js";
-import { GENERATION_HORIZON_DAYS } from "./constants.js";
+import { GENERATION_HORIZON_DAYS, MAX_EVENT_MINUTES } from "./constants.js";
 import type { DomainContext } from "./context.js";
 import { resolveEventReference } from "./resolveReference.js";
 import { toEventInsertParams } from "./eventRowParams.js";
@@ -27,6 +27,22 @@ function hasExactlyOneReference(data: { eventId?: string; title?: string }): boo
   return (data.eventId ? 1 : 0) + (data.title ? 1 : 0) === 1;
 }
 
+/**
+ * Both optional, but at least one required: `move` covers a pure
+ * reschedule (dateExpression only, duration unchanged — the original
+ * behavior), a pure resize (durationMinutes only, time unchanged — the gap
+ * that let a real event get silently cancelled with no replacement, since
+ * the only way to express "make this 3h" used to be cancel-and-re-add,
+ * which needs two tool calls the loop can't make in one turn), or both at
+ * once ("move it to 6pm–9pm").
+ */
+function moveHasAtLeastOneChange(data: { action: string; dateExpression?: string; durationMinutes?: number }): boolean {
+  if (data.action !== "move") {
+    return true;
+  }
+  return data.dateExpression !== undefined || data.durationMinutes !== undefined;
+}
+
 export const updateEventInputSchema = z
   .discriminatedUnion("action", [
     z.object({
@@ -35,14 +51,22 @@ export const updateEventInputSchema = z
       actualMinutes: z.number().int().positive().optional(),
     }),
     z.object({ action: z.literal("cancel"), ...referenceShape }),
-    z.object({ action: z.literal("move"), ...referenceShape, dateExpression: z.string().min(1) }),
+    z.object({
+      action: z.literal("move"),
+      ...referenceShape,
+      dateExpression: z.string().min(1).optional(),
+      durationMinutes: z.number().int().positive().max(MAX_EVENT_MINUTES).optional(),
+    }),
     z.object({
       action: z.literal("split"),
       ...referenceShape,
       completedMinutes: z.number().int().positive(),
     }),
   ])
-  .refine(hasExactlyOneReference, { message: "Provide exactly one of eventId or title." });
+  .refine(hasExactlyOneReference, { message: "Provide exactly one of eventId or title." })
+  .refine(moveHasAtLeastOneChange, {
+    message: "Provide at least one of dateExpression or durationMinutes for action \"move\".",
+  });
 
 export type UpdateEventInput = z.infer<typeof updateEventInputSchema>;
 
@@ -114,7 +138,14 @@ export async function updateEvent(
   }
 
   if (input.action === "move") {
-    const startsAt = resolveDateExpression(input.dateExpression, context.now, context.ownerTimezone);
+    // Both default to the current value when omitted — a pure resize
+    // ("nsfit to 3h") supplies only durationMinutes and keeps the existing
+    // time; a pure reschedule supplies only dateExpression, exactly as
+    // before. moveHasAtLeastOneChange guarantees at least one is real.
+    const startsAt = input.dateExpression
+      ? resolveDateExpression(input.dateExpression, context.now, context.ownerTimezone)
+      : current.startsAt;
+    const durationMinutes = input.durationMinutes ?? current.durationMinutes;
 
     // Requirement 8: TWO rows — the original marked rescheduled (freeing
     // its slot), and a new event_id at the new time carrying
@@ -125,14 +156,14 @@ export async function updateEvent(
     const clashesWith = await findClashes(database, {
       userId: context.ownerUserId,
       startsAt,
-      durationMinutes: current.durationMinutes,
+      durationMinutes,
     });
 
     const newRow = await insertEventRow(database, {
       userId: context.ownerUserId,
       title: current.title,
       startsAt,
-      durationMinutes: current.durationMinutes,
+      durationMinutes,
       status: "planned",
       taskId: current.taskId ?? undefined,
       movedFromEventId: current.eventId,
