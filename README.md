@@ -11,6 +11,9 @@ decisions, and the phased roadmap live in the sibling repository
 - `docs/product-specs/phase-1-implementation-plan.md` — the stage-by-stage
   plan this repo is being built against
 
+See [`capabilities.md`](capabilities.md) in this repo for a one-sentence
+summary of every tool the assistant can call.
+
 ## Setup
 
 ```bash
