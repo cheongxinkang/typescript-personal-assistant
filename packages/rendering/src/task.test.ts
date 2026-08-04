@@ -13,6 +13,7 @@ describe("renderTaskAdded", () => {
         status: "open",
         projectId: null,
         orphanedEventIds: [],
+        dependsOnTitles: [],
       },
       { timezone: "Asia/Singapore" },
     );
@@ -30,11 +31,30 @@ describe("renderTaskAdded", () => {
         status: "open",
         projectId: null,
         orphanedEventIds: [],
+        dependsOnTitles: [],
       },
       { timezone: "Asia/Singapore" },
     );
     expect(text).toContain("due");
     expect(text).toContain("6:00 PM");
+  });
+
+  it("names its dependencies when present", () => {
+    const text = renderTaskAdded(
+      {
+        taskId: "t1",
+        title: "Mock exam",
+        description: null,
+        estimatedMinutes: null,
+        deadline: null,
+        status: "open",
+        projectId: null,
+        orphanedEventIds: [],
+        dependsOnTitles: ["Finish module 4"],
+      },
+      { timezone: "Asia/Singapore" },
+    );
+    expect(text).toContain("Depends on: Finish module 4.");
   });
 });
 
@@ -50,6 +70,7 @@ describe("renderTaskUpdated", () => {
         status: "completed",
         projectId: null,
         orphanedEventIds: ["e1"],
+        dependsOnTitles: [],
       },
       { timezone: "Asia/Singapore" },
     );
@@ -68,9 +89,28 @@ describe("renderTaskUpdated", () => {
         status: "cancelled",
         projectId: null,
         orphanedEventIds: [],
+        dependsOnTitles: [],
       },
       { timezone: "Asia/Singapore" },
     );
     expect(text).toBe("Cancelled task: Not needed.");
+  });
+
+  it("names its dependencies on a plain edit", () => {
+    const text = renderTaskUpdated(
+      {
+        taskId: "t1",
+        title: "Mock exam",
+        description: null,
+        estimatedMinutes: null,
+        deadline: null,
+        status: "open",
+        projectId: null,
+        orphanedEventIds: [],
+        dependsOnTitles: ["Finish module 4"],
+      },
+      { timezone: "Asia/Singapore" },
+    );
+    expect(text).toBe("Updated task: Mock exam. Depends on: Finish module 4.");
   });
 });

@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ensureOwnerUser, OWNER_USER_ID } from "@assistant/db";
+import { ensureOwnerUser, insertTaskRow, OWNER_USER_ID } from "@assistant/db";
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import { addTask, addTaskInputSchema } from "./addTask.js";
 import type { DomainContext } from "./context.js";
+import { NotFoundError } from "./errors.js";
 
 describe("addTask (domain)", () => {
   let testDb: TestDatabase;
@@ -40,6 +41,26 @@ describe("addTask (domain)", () => {
     );
 
     expect(result.deadline).toBe("2026-08-03T10:00:00.000Z"); // 2026-08-03T18:00 SGT
+  });
+
+  it("resolves dependsOn by title", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    await insertTaskRow(testDb.database, { userId: OWNER_USER_ID, title: "Finish module 4" });
+
+    const result = await addTask(
+      testDb.database,
+      { title: "Mock exam", dependsOn: ["Finish module 4"] },
+      context(now),
+    );
+
+    expect(result.dependsOnTitles).toEqual(["Finish module 4"]);
+  });
+
+  it("throws NotFoundError for a dependsOn title matching nothing", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    await expect(
+      addTask(testDb.database, { title: "Mock exam", dependsOn: ["Nonexistent task"] }, context(now)),
+    ).rejects.toThrow(NotFoundError);
   });
 
   describe("addTaskInputSchema", () => {

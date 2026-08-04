@@ -9,9 +9,16 @@ function orphanNote(data: TaskData): string {
   return ` Note: ${count === 1 ? "an event" : `${count} events`} still on your schedule for this task ${count === 1 ? "was" : "were"} left untouched.`;
 }
 
+function dependsOnNote(data: TaskData): string {
+  if (data.dependsOnTitles.length === 0) {
+    return "";
+  }
+  return ` Depends on: ${data.dependsOnTitles.join(", ")}.`;
+}
+
 export const renderTaskAdded: Renderer<TaskData> = (data: TaskData, context: RenderContext) => {
   const deadlineNote = data.deadline ? ` — due ${formatDateTime(new Date(data.deadline), context.timezone)}` : "";
-  return `Added task: ${data.title}${deadlineNote}.`;
+  return `Added task: ${data.title}${deadlineNote}.${dependsOnNote(data)}`;
 };
 
 export const renderTaskUpdated: Renderer<TaskData> = (data: TaskData) => {
@@ -21,7 +28,7 @@ export const renderTaskUpdated: Renderer<TaskData> = (data: TaskData) => {
   if (data.status === "cancelled") {
     return `Cancelled task: ${data.title}.${orphanNote(data)}`;
   }
-  return `Updated task: ${data.title}.`;
+  return `Updated task: ${data.title}.${dependsOnNote(data)}`;
 };
 
 export { TASK_ADDED_KIND, TASK_UPDATED_KIND };

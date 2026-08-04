@@ -51,6 +51,15 @@ add_task:
       Optional. When the task is due, in the same date-expression forms as
       add_event's dateExpression.
     projectId: Optional. The id of the project this task belongs to, if any.
+    dependsOn: >
+      Optional. Titles of other open tasks that must be completed first —
+      never ids. Use this whenever the owner says one task can't happen (or
+      shouldn't be scheduled) until another one is done: "before", "after",
+      "depends on", "needs X first", "once X is finished", and similar.
+      generate_schedule will never place a task ahead of something named
+      here. A title matching zero or more than one open task fails the call
+      the same way a `title` reference does elsewhere — ask the owner to
+      clarify rather than guessing.
 
 update_task:
   description: >
@@ -73,6 +82,14 @@ update_task:
     deadline: >
       Optional, only for action "edit". A new deadline, in the same
       date-expression forms as add_event's dateExpression.
+    dependsOn: >
+      Optional, only for action "edit". Titles of other open tasks that
+      must be completed first — never ids. Same trigger phrases as
+      add_task's dependsOn ("before", "after", "depends on", "needs X
+      first", and similar). Omit to leave existing dependencies unchanged;
+      pass an empty list to clear them all. Setting a dependency that would
+      make a task (transitively) depend on itself fails the call — explain
+      the conflict to the owner rather than retrying blindly.
 
 update_event:
   description: >

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { TaskListData, TaskListGroup } from "@assistant/core";
+import type { TaskData, TaskListData, TaskListGroup } from "@assistant/core";
 import { getCurrentProject, listTasksForOwner, type Database } from "@assistant/db";
 import type { DomainContext } from "./context.js";
 import { toTaskData } from "./taskData.js";
@@ -28,10 +28,10 @@ export async function listTasks(
 ): Promise<TaskListData> {
   const rows = await listTasksForOwner(database, context.ownerUserId, input.status ?? "open");
 
-  const tasksByProjectId = new Map<string, ReturnType<typeof toTaskData>[]>();
-  const ungrouped: ReturnType<typeof toTaskData>[] = [];
+  const tasksByProjectId = new Map<string, TaskData[]>();
+  const ungrouped: TaskData[] = [];
   for (const row of rows) {
-    const task = toTaskData(row, []);
+    const task = await toTaskData(database, row, []);
     if (row.projectId) {
       const existing = tasksByProjectId.get(row.projectId);
       if (existing) {

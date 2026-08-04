@@ -26,4 +26,16 @@ describe("addTaskTool.handler", () => {
     expect(result.title).toBe("Pick a static site generator");
     expect(result.status).toBe("open");
   });
+
+  it("resolves dependsOn by title through the flat wire shape — the real MCP call shape", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    await addTaskTool.handler({ title: "Finish module 4" }, context(now));
+
+    const result = await addTaskTool.handler(
+      { title: "Mock exam", dependsOn: ["Finish module 4"] },
+      context(now),
+    );
+
+    expect(result.dependsOnTitles).toEqual(["Finish module 4"]);
+  });
 });
