@@ -136,6 +136,66 @@ describe("placeTasks", () => {
     expect(result.overflow).toEqual([{ id: "t1", reason: "deadline_passed" }]);
   });
 
+  it("reports 'dependency_unmet' and does not place a candidate whose in-set dependency overflowed", () => {
+    // Reproduces the real bug: a dependency with a past deadline overflows
+    // (deadline_passed) and never gets placed — its dependent must overflow
+    // too, not get placed as if the dependency succeeded. Candidates are
+    // pre-ordered by applyDependencyOrder, so module4 (the dependency)
+    // comes first here.
+    const result = placeTasks(
+      [
+        { id: "module4", durationMinutes: 60, deadline: new Date("2026-08-01T00:00:00Z") },
+        { id: "mock-exam", durationMinutes: 60, dependsOn: ["module4"] },
+      ],
+      {
+        horizonStart: new Date("2026-08-03T01:00:00Z"),
+        horizonEnd: new Date("2026-08-10T00:00:00Z"),
+        dayShape: WEEKDAY_9_TO_5,
+        timezone: "Asia/Singapore",
+        busy: [],
+      },
+    );
+    expect(result.placements).toEqual([]);
+    expect(result.overflow).toEqual([
+      { id: "module4", reason: "deadline_passed" },
+      { id: "mock-exam", reason: "dependency_unmet" },
+    ]);
+  });
+
+  it("places a dependent once its dependency is actually placed", () => {
+    const result = placeTasks(
+      [
+        { id: "module4", durationMinutes: 60 },
+        { id: "mock-exam", durationMinutes: 60, dependsOn: ["module4"] },
+      ],
+      {
+        horizonStart: new Date("2026-08-03T01:00:00Z"), // Monday 09:00 SGT
+        horizonEnd: new Date("2026-08-10T00:00:00Z"),
+        dayShape: WEEKDAY_9_TO_5,
+        timezone: "Asia/Singapore",
+        busy: [],
+      },
+    );
+    expect(result.overflow).toEqual([]);
+    expect(result.placements.map((p) => p.id)).toEqual(["module4", "mock-exam"]);
+    expect(result.placements[1]!.startsAt.getTime()).toBeGreaterThan(result.placements[0]!.startsAt.getTime());
+  });
+
+  it("does not block on a dependency outside the candidate set", () => {
+    const result = placeTasks(
+      [{ id: "mock-exam", durationMinutes: 60, dependsOn: ["already-completed-elsewhere"] }],
+      {
+        horizonStart: new Date("2026-08-03T01:00:00Z"),
+        horizonEnd: new Date("2026-08-10T00:00:00Z"),
+        dayShape: WEEKDAY_9_TO_5,
+        timezone: "Asia/Singapore",
+        busy: [],
+      },
+    );
+    expect(result.overflow).toEqual([]);
+    expect(result.placements).toHaveLength(1);
+  });
+
   it("does not shift across the real 2026 DST spring-forward boundary (America/New_York)", () => {
     // 2026-03-08 is the real US spring-forward date: 02:00 -> 03:00 local.
     const dayShape: DayShape = { sunday: { start: "01:00", end: "04:00" } };
