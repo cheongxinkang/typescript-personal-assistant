@@ -5,6 +5,7 @@ import { ensureOwnerUser, OWNER_USER_ID } from "./users.js";
 import {
   getCurrentEvent,
   insertEventRow,
+  listAllEventsForOwner,
   listEventsInRange,
   listNonCancelledEventsByTaskId,
 } from "./events.js";
@@ -187,5 +188,46 @@ describe("listNonCancelledEventsByTaskId", () => {
   it("returns an empty array for a taskId with no events", async () => {
     const results = await listNonCancelledEventsByTaskId(testDb.database, randomUUID());
     expect(results).toEqual([]);
+  });
+});
+
+describe("listAllEventsForOwner", () => {
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await startTestDatabase();
+    await ensureOwnerUser(testDb.database, "Asia/Singapore");
+  }, 60_000);
+
+  afterAll(async () => {
+    await testDb.teardown();
+  });
+
+  it("returns every status, ascending by startsAt, capped at the given limit — phase_2a-db-visibility.md Requirement 4/7", async () => {
+    const laterId = randomUUID();
+    await insertEventRow(testDb.database, {
+      eventId: laterId,
+      userId: OWNER_USER_ID,
+      title: "Later, cancelled",
+      startsAt: new Date("2026-08-10T10:00:00.000Z"),
+      durationMinutes: 30,
+      status: "cancelled",
+    });
+    const earlierId = randomUUID();
+    await insertEventRow(testDb.database, {
+      eventId: earlierId,
+      userId: OWNER_USER_ID,
+      title: "Earlier, planned",
+      startsAt: new Date("2026-08-01T10:00:00.000Z"),
+      durationMinutes: 30,
+    });
+
+    const rows = await listAllEventsForOwner(testDb.database, OWNER_USER_ID, 500);
+    const relevant = rows.filter((r) => r.eventId === laterId || r.eventId === earlierId);
+    // Ascending by startsAt, and the cancelled one is included — unlike listEventsInRange's default.
+    expect(relevant.map((r) => r.eventId)).toEqual([earlierId, laterId]);
+
+    const limited = await listAllEventsForOwner(testDb.database, OWNER_USER_ID, 1);
+    expect(limited).toHaveLength(1);
   });
 });

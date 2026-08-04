@@ -7,6 +7,8 @@ const VALID_ENV = {
   ANTHROPIC_API_KEY: "sk-ant-test",
   DATABASE_URL: "postgres://localhost/test",
   OWNER_TIMEZONE: "Asia/Singapore",
+  BASIC_AUTH_USER: "owner",
+  BASIC_AUTH_PASSWORD: "correct-horse-battery-staple",
 };
 
 describe("loadConfig", () => {
@@ -19,12 +21,31 @@ describe("loadConfig", () => {
       databaseUrl: "postgres://localhost/test",
       ownerTimezone: "Asia/Singapore",
       port: 3000,
+      basicAuthUser: "owner",
+      basicAuthPassword: "correct-horse-battery-staple",
+      viewerPort: 8080,
     });
   });
 
   it("respects an explicit PORT", () => {
     const config = loadConfig({ ...VALID_ENV, PORT: "8080" });
     expect(config.port).toBe(8080);
+  });
+
+  it("respects an explicit VIEWER_PORT", () => {
+    const config = loadConfig({ ...VALID_ENV, VIEWER_PORT: "9090" });
+    expect(config.viewerPort).toBe(9090);
+  });
+
+  it("throws ConfigError naming a missing Basic Auth variable", () => {
+    const { BASIC_AUTH_PASSWORD: _omit, ...withoutPassword } = VALID_ENV;
+    try {
+      loadConfig(withoutPassword);
+      expect.unreachable("loadConfig should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      expect((error as Error).message).toContain("BASIC_AUTH_PASSWORD");
+    }
   });
 
   it("throws ConfigError naming the missing variable, never its value", () => {

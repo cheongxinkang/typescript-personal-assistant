@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { startTestDatabase, type TestDatabase } from "../testing.js";
 import { ensureOwnerUser, OWNER_USER_ID } from "./users.js";
-import { getCurrentTask, insertTaskRow } from "./tasks.js";
+import { getCurrentTask, insertTaskRow, listTasksForOwner } from "./tasks.js";
 
 describe("tasks fold view (tasks_current)", () => {
   let testDb: TestDatabase;
@@ -93,5 +93,44 @@ describe("tasks fold view (tasks_current)", () => {
     const current = await getCurrentTask(testDb.database, taskId);
     expect(current?.projectId).toBe(projectId);
     expect(current?.source).toBe("generated");
+  });
+});
+
+describe("listTasksForOwner", () => {
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await startTestDatabase();
+    await ensureOwnerUser(testDb.database, "Asia/Singapore");
+  }, 60_000);
+
+  afterAll(async () => {
+    await testDb.teardown();
+  });
+
+  it("returns every status when no status filter is given — phase_2a-db-visibility.md Requirement 3", async () => {
+    const openId = randomUUID();
+    const completedId = randomUUID();
+    await insertTaskRow(testDb.database, { taskId: openId, userId: OWNER_USER_ID, title: "Open one" });
+    await insertTaskRow(testDb.database, {
+      taskId: completedId,
+      userId: OWNER_USER_ID,
+      title: "Completed one",
+      status: "completed",
+    });
+
+    const rows = await listTasksForOwner(testDb.database, OWNER_USER_ID);
+
+    const statuses = rows.filter((r) => r.taskId === openId || r.taskId === completedId).map((r) => r.status);
+    expect(statuses.sort()).toEqual(["completed", "open"]);
+  });
+
+  it("applies limit when given, and returns everything when omitted", async () => {
+    for (let i = 0; i < 3; i += 1) {
+      await insertTaskRow(testDb.database, { userId: OWNER_USER_ID, title: `Limit test ${i}` });
+    }
+
+    const limited = await listTasksForOwner(testDb.database, OWNER_USER_ID, undefined, 1);
+    expect(limited).toHaveLength(1);
   });
 });
