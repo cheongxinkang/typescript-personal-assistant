@@ -11,6 +11,13 @@ export interface PlacementCandidate {
   /** `null`/`undefined` means no estimate exists — always overflow (Requirement 18's edge case). */
   durationMinutes: number | null | undefined;
   deadline?: Date;
+  /**
+   * Ids this candidate can't be placed before. Only enforced by
+   * `applyDependencyOrder` (scheduleOrdering.ts), not by `placeTasks`
+   * itself — a dependency id outside this candidate set (already
+   * completed, or not part of this run) is simply not constrained here.
+   */
+  dependsOn?: readonly string[];
 }
 
 export interface Placement {
