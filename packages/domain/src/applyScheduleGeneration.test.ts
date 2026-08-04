@@ -164,4 +164,71 @@ describe("applyScheduleGeneration (domain)", () => {
     const newProposal = events.find((e) => e.taskId === task.taskId);
     expect(newProposal?.startsAt).toEqual(horizonStart); // placed right at the start, unblocked by the stale proposal
   });
+
+  it("places a dependency before its dependent even when the model ordered them the other way", async () => {
+    const horizonStart = new Date("2026-08-31T01:00:00.000Z"); // Monday 09:00 SGT
+    const horizonEnd = new Date("2026-09-07T00:00:00.000Z");
+
+    const module4 = await insertTaskRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Finish module 4",
+      estimatedMinutes: 60,
+    });
+    const mockExam = await insertTaskRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Mock exam",
+      estimatedMinutes: 60,
+      dependsOn: [module4.taskId],
+    });
+
+    const run = await insertGenerationRun(testDb.database, {
+      userId: OWNER_USER_ID,
+      horizonStart,
+      horizonEnd,
+      placedCount: 0,
+      overflow: [],
+    });
+    const provider = new FakeBatchProvider();
+    const providerBatchId = provider.scriptNextBatch(
+      [{ status: "ended", requestCounts: { processing: 0, succeeded: 1, errored: 0, canceled: 0, expired: 0 }, endedAt: new Date() }],
+      [
+        {
+          customId: run.id,
+          outcome: {
+            type: "succeeded",
+            // Model ordered the dependent BEFORE its dependency — the bug
+            // this stage exists to prevent from reaching placement.
+            text: JSON.stringify([mockExam.taskId, module4.taskId]),
+            model: "fake",
+            usage: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 0 },
+          },
+        },
+      ],
+    );
+    await provider.submit([{ customId: run.id, systemPrompt: "sys", messages: [] }]);
+    const job = await insertBatchJob(testDb.database, {
+      kind: "schedule_generation",
+      subjectId: run.id,
+      providerBatchId,
+    });
+
+    await applyScheduleGeneration(testDb.database, provider, job, {
+      ownerUserId: OWNER_USER_ID,
+      ownerTimezone: "Asia/Singapore",
+      dayShape: WEEKDAY_9_TO_5,
+    });
+
+    const events = await listEventsInRange(testDb.database, {
+      userId: OWNER_USER_ID,
+      startInclusive: horizonStart,
+      endExclusive: horizonEnd,
+      includeCancelled: true,
+    });
+    const module4Event = events.find((e) => e.taskId === module4.taskId && e.status === "proposed");
+    const mockExamEvent = events.find((e) => e.taskId === mockExam.taskId && e.status === "proposed");
+
+    expect(module4Event).toBeDefined();
+    expect(mockExamEvent).toBeDefined();
+    expect(module4Event!.startsAt.getTime()).toBeLessThan(mockExamEvent!.startsAt.getTime());
+  });
 });
