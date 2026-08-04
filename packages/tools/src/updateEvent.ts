@@ -25,6 +25,12 @@ export const updateEventInputShape = {
     .min(1)
     .optional()
     .describe(requireToolField(prompt, "update_event", "dateExpression")),
+  durationMinutes: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(requireToolField(prompt, "update_event", "durationMinutes")),
   completedMinutes: z
     .number()
     .int()

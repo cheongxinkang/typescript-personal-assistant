@@ -162,6 +162,56 @@ describe("updateEvent (domain)", () => {
 
       expect(result.clashesWith).toEqual([other.eventId]);
     });
+
+    it("resizes without moving when only durationMinutes is given — the real bug: previously the only way to resize was cancel-and-re-add, which needed two tool calls the loop can't make in one turn", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const startsAt = new Date("2026-08-05T10:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "NSFIT",
+        startsAt,
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "move", eventId: event.eventId, durationMinutes: 180 },
+        context(now),
+      );
+
+      expect(result.status).toBe("planned");
+      expect(result.durationMinutes).toBe(180);
+      expect(new Date(result.startsAt).getTime()).toBe(startsAt.getTime());
+
+      const original = await getCurrentEvent(testDb.database, event.eventId);
+      expect(original?.status).toBe("rescheduled");
+    });
+
+    it("moves and resizes together when both are given", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const originalStartsAt = new Date("2026-08-05T10:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "NSFIT",
+        startsAt: originalStartsAt,
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "move", eventId: event.eventId, dateExpression: "+3d 21:00", durationMinutes: 180 },
+        context(now),
+      );
+
+      expect(result.durationMinutes).toBe(180);
+      expect(new Date(result.startsAt).getTime()).not.toBe(originalStartsAt.getTime());
+    });
+
+    it("rejects a move with neither dateExpression nor durationMinutes", () => {
+      expect(
+        updateEventInputSchema.safeParse({ action: "move", eventId: "e1" }).success,
+      ).toBe(false);
+    });
   });
 
   describe("split", () => {
