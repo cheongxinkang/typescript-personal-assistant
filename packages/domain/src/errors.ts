@@ -41,3 +41,22 @@ export class AmbiguousReferenceError extends Error {
     this.name = "AmbiguousReferenceError";
   }
 }
+
+/**
+ * Thrown when a task's `dependsOn` would make it (transitively) depend on
+ * itself. Same plain-text-tool_result pattern as AmbiguousReferenceError —
+ * the model is expected to turn this into a clarifying question rather than
+ * silently dropping the dependency or crashing the turn.
+ */
+export class DependencyCycleError extends Error {
+  constructor(
+    taskTitle: string,
+    public readonly cyclePath: readonly string[],
+  ) {
+    super(
+      `Can't make "${taskTitle}" depend on that: it would create a cycle (${cyclePath.join(" -> ")}). ` +
+        "Remove one of the dependencies in that chain first.",
+    );
+    this.name = "DependencyCycleError";
+  }
+}

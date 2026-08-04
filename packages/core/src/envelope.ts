@@ -112,6 +112,12 @@ export interface TaskData {
    * reply can say so, rather than silently leaving them orphaned-looking.
    */
   orphanedEventIds: string[];
+  /**
+   * Titles, not ids — the owner never sees a taskId, so a confirmation
+   * naming a dependency has to resolve it back to something readable, the
+   * same reason renderers never surface a raw id anywhere else.
+   */
+  dependsOnTitles: string[];
 }
 
 export const TASK_ADDED_KIND = "task_added" as const;

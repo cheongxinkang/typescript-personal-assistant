@@ -11,6 +11,7 @@ function task(title: string, deadline: string | null = null) {
     status: "open" as const,
     projectId: null,
     orphanedEventIds: [],
+    dependsOnTitles: [],
   };
 }
 
