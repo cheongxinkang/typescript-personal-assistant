@@ -68,6 +68,19 @@ kubectl apply -f deploy/deployment.yaml
 kubectl apply -f deploy/service.yaml
 ```
 
+**Updating an existing secret** (e.g. adding `BASIC_AUTH_USER`/
+`BASIC_AUTH_PASSWORD` for phase_2a-db-visibility.md): `kubectl create
+secret` fails if the secret already exists. Delete and recreate rather than
+trying to patch individual keys:
+
+```bash
+kubectl -n personal-assistant delete secret assistant-secrets
+# then the grep/create block above, unchanged
+```
+
+A pod restart (`kubectl rollout restart deployment/assistant-server`) is
+still required after this — `envFrom` is read at container start, not live.
+
 ## Verify
 
 ```bash

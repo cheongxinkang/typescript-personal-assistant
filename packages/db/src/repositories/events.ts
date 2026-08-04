@@ -1,4 +1,4 @@
-import { and, eq, gte, ilike, inArray, lt, notInArray } from "drizzle-orm";
+import { and, asc, eq, gte, ilike, inArray, lt, notInArray } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { events, eventsCurrent } from "../schema.js";
 
@@ -100,6 +100,22 @@ export async function listEventsInRange(
     .from(eventsCurrent)
     .where(and(...conditions))
     .orderBy(eventsCurrent.startsAt);
+}
+
+/**
+ * Every one of the owner's events, folded, every status — no range, no
+ * status filter. phase_2a-db-visibility.md Requirement 4 (all rows, not
+ * just active ones) and Requirement 7 (defensive `limit`); distinct from
+ * `listEventsInRange`, which every tool-facing read uses instead and which
+ * this deliberately does not touch.
+ */
+export async function listAllEventsForOwner(database: Database, userId: string, limit: number): Promise<EventRow[]> {
+  return database.db
+    .select()
+    .from(eventsCurrent)
+    .where(eq(eventsCurrent.userId, userId))
+    .orderBy(asc(eventsCurrent.startsAt))
+    .limit(limit);
 }
 
 /**

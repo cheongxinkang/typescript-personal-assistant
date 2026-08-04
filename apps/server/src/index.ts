@@ -50,6 +50,7 @@ import { applyEndedBatchJobsOnce } from "./applyBatchJobs.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { DayShapeConfigError, loadDayShape } from "./dayShape.js";
 import { pollBatchJobsOnce } from "./poller.js";
+import { buildViewerApp } from "./viewer.js";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -284,11 +285,27 @@ async function main(): Promise<void> {
   await app.listen({ port: config.port, host: "0.0.0.0" });
   logger.info({ port: config.port }, "Server listening");
 
+  // phase_2a-db-visibility.md Requirement 12 (decision 11) — a separate
+  // Fastify instance, separate port, carrying only the read-only viewer.
+  // Bound to 0.0.0.0 inside the container; deploy/deployment.yaml's
+  // hostPort + hostIP: 127.0.0.1 is what actually restricts this to
+  // loopback on the host, not this bind address.
+  const viewerApp = buildViewerApp({
+    logger,
+    basicAuthUser: config.basicAuthUser,
+    basicAuthPassword: config.basicAuthPassword,
+  });
+  await viewerApp.listen({ port: config.viewerPort, host: "0.0.0.0" });
+  logger.info({ port: config.viewerPort }, "Viewer listening");
+
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down");
     clearInterval(pollTimer);
     await adapter.stop();
     await app.close();
+    // Forgetting this hangs pod termination — the whole reason it's called
+    // out explicitly in phase_2a-db-visibility.md's Technical impact section.
+    await viewerApp.close();
     await database.client.end();
     process.exit(0);
   };

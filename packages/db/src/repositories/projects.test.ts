@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { startTestDatabase, type TestDatabase } from "../testing.js";
 import { ensureOwnerUser, OWNER_USER_ID } from "./users.js";
-import { getCurrentProject, insertProjectRow } from "./projects.js";
+import { getCurrentProject, insertProjectRow, listProjectsForOwner } from "./projects.js";
 
 describe("projects fold view (projects_current)", () => {
   let testDb: TestDatabase;
@@ -64,5 +64,32 @@ describe("projects fold view (projects_current)", () => {
 
     expect((await getCurrentProject(testDb.database, projectIdA))?.title).toBe("A, revised");
     expect((await getCurrentProject(testDb.database, projectIdB))?.title).toBe("B");
+  });
+});
+
+describe("listProjectsForOwner", () => {
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await startTestDatabase();
+    await ensureOwnerUser(testDb.database, "Asia/Singapore");
+  }, 60_000);
+
+  afterAll(async () => {
+    await testDb.teardown();
+  });
+
+  it("returns folded projects, newest first, capped at the given limit — phase_2a-db-visibility.md Requirement 2/7", async () => {
+    const firstId = randomUUID();
+    await insertProjectRow(testDb.database, { projectId: firstId, userId: OWNER_USER_ID, title: "First" });
+    const secondId = randomUUID();
+    await insertProjectRow(testDb.database, { projectId: secondId, userId: OWNER_USER_ID, title: "Second" });
+
+    const rows = await listProjectsForOwner(testDb.database, OWNER_USER_ID, 500);
+    const relevant = rows.filter((r) => r.projectId === firstId || r.projectId === secondId);
+    expect(relevant.map((r) => r.projectId)).toEqual([secondId, firstId]);
+
+    const limited = await listProjectsForOwner(testDb.database, OWNER_USER_ID, 1);
+    expect(limited).toHaveLength(1);
   });
 });

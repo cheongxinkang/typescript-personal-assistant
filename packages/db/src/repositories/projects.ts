@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { projects, projectsCurrent } from "../schema.js";
 
@@ -51,4 +51,18 @@ export async function getCurrentProject(
     .where(eq(projectsCurrent.projectId, projectId))
     .limit(1);
   return row;
+}
+
+/**
+ * Every one of the owner's projects, folded, every status.
+ * phase_2a-db-visibility.md Requirement 2/7 — all rows, with a defensive
+ * `limit`.
+ */
+export async function listProjectsForOwner(database: Database, userId: string, limit: number): Promise<ProjectRow[]> {
+  return database.db
+    .select()
+    .from(projectsCurrent)
+    .where(eq(projectsCurrent.userId, userId))
+    .orderBy(desc(projectsCurrent.createdAt))
+    .limit(limit);
 }

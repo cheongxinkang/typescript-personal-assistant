@@ -40,6 +40,17 @@ spec:
           image: ghcr.io/cheongxinkang/typescript-personal-assistant:latest
           ports:
             - containerPort: 3000
+            # phase_2a-db-visibility.md Requirement 12/decision 11 — the
+            # read-only DB-visibility viewer's own listener, the only port
+            # this Deployment publishes to the host. hostIP is load-bearing:
+            # without it, hostPort binds every node interface, putting
+            # conversation history on the LAN behind nothing but Basic Auth.
+            # With it, only 127.0.0.1:8080 binds — exactly what the owner's
+            # Cloudflare Tunnel reads. Verify after every deploy with
+            # `ss -ltnp` on the host, never assume from this YAML alone.
+            - containerPort: 8080
+              hostPort: 8080
+              hostIP: 127.0.0.1
           envFrom:
             - secretRef:
                 name: assistant-secrets

@@ -46,6 +46,10 @@ COPY --from=build /out/package.json ./package.json
 # file, not a Kubernetes Secret/ConfigMap — it isn't sensitive, and baking it
 # into the image keeps it versioned with the code that enforces it.
 COPY config ./config
+# phase_2a-db-visibility.md: the DB-visibility viewer's single static page,
+# read once at boot from process.cwd() (apps/server/src/viewer.ts) — same
+# COPY-into-/app convention as config/day-shape.yaml above.
+COPY viewer ./viewer
 
 # Node sizes its heap from host memory, not the cgroup limit — set
 # explicitly to ~75% of the container memory limit set in deploy/deployment.yaml
@@ -53,5 +57,6 @@ COPY config ./config
 ENV NODE_OPTIONS="--max-old-space-size=192"
 
 EXPOSE 3000
+EXPOSE 8080
 USER node
 CMD ["node", "dist/index.js"]

@@ -75,20 +75,28 @@ export async function listOpenTasks(database: Database, userId: string): Promise
  * Every one of the owner's tasks, folded, optionally narrowed to a single
  * status — added during Stage 7's real end-to-end pass, which surfaced
  * that nothing let the owner read tasks back at all (only add/update).
+ *
+ * `limit` is optional and additive: the `list_tasks` tool never passes one
+ * (personal-scale, no ceiling wanted there), while phase_2a-db-visibility's
+ * viewer always passes its defensive ceiling (Requirement 7) — one function,
+ * two call sites, rather than a near-duplicate.
  */
 export async function listTasksForOwner(
   database: Database,
   userId: string,
   status?: TaskRow["status"],
+  limit?: number,
 ): Promise<TaskRow[]> {
   const conditions = [eq(tasksCurrent.userId, userId)];
   if (status) {
     conditions.push(eq(tasksCurrent.status, status));
   }
-  return database.db
+  const query = database.db
     .select()
     .from(tasksCurrent)
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .orderBy(desc(tasksCurrent.createdAt));
+  return limit ? query.limit(limit) : query;
 }
 
 /**
