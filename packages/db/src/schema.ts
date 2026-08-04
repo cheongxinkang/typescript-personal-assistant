@@ -122,6 +122,11 @@ export const tasks = pgTable(
       .notNull()
       .default("user"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    // taskIds this task can't be scheduled before (task-dependencies plan).
+    // A plain array, not a join table or FK, for the same fold-key reason
+    // taskId itself isn't an FK target — carries forward automatically via
+    // carryForward, no special-casing needed there.
+    dependsOn: uuid("depends_on").array().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("tasks_task_id_idx").on(table.taskId), index("tasks_project_id_idx").on(table.projectId)],

@@ -22,6 +22,7 @@ export async function insertTaskRow(
     status?: TaskRow["status"];
     source?: TaskRow["source"];
     completedAt?: Date;
+    dependsOn?: string[];
   },
 ): Promise<TaskRow> {
   const [row] = await database.db
@@ -37,6 +38,7 @@ export async function insertTaskRow(
       status: params.status,
       source: params.source,
       completedAt: params.completedAt,
+      dependsOn: params.dependsOn,
     })
     .returning();
 
