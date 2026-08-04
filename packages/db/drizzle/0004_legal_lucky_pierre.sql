@@ -1,0 +1,3 @@
+DROP VIEW "public"."tasks_current";--> statement-breakpoint
+ALTER TABLE "tasks" ADD COLUMN "depends_on" uuid[] DEFAULT '{}' NOT NULL;--> statement-breakpoint
+CREATE VIEW "public"."tasks_current" AS (select distinct on ("tasks"."task_id") "row_id", "task_id", "user_id", "project_id", "title", "description", "estimated_minutes", "deadline", "status", "source", "completed_at", "depends_on", "created_at" from "tasks" order by "tasks"."task_id", "tasks"."created_at" desc, "tasks"."row_id" desc);
