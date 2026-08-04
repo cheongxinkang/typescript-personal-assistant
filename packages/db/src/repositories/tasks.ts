@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, ilike } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { tasks, tasksCurrent } from "../schema.js";
 
@@ -87,4 +87,26 @@ export async function listTasksForOwner(
     .select()
     .from(tasksCurrent)
     .where(and(...conditions));
+}
+
+/**
+ * Case-insensitive substring match on title, scoped to **open** tasks only
+ * — a `completed`/`cancelled` task is stale history, not something you'd
+ * naturally reference by name to act on again. Added to resolve
+ * `update_task`'s `title` reference, the same gap and fix as
+ * `findEventsForOwnerByTitle` — see
+ * `packages/domain/src/resolveReference.ts`.
+ */
+export async function findTasksForOwnerByTitle(
+  database: Database,
+  userId: string,
+  searchTerm: string,
+): Promise<TaskRow[]> {
+  return database.db
+    .select()
+    .from(tasksCurrent)
+    .where(
+      and(eq(tasksCurrent.userId, userId), eq(tasksCurrent.status, "open"), ilike(tasksCurrent.title, `%${searchTerm}%`)),
+    )
+    .orderBy(desc(tasksCurrent.createdAt));
 }

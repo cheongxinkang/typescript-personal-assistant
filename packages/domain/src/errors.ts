@@ -18,3 +18,26 @@ export class NotFoundError extends Error {
     this.name = "NotFoundError";
   }
 }
+
+/**
+ * Thrown when a title-based reference (update_event/update_task, given a
+ * `title` instead of an id) matches more than one candidate. The message is
+ * plain text fed back to the model as a tool_result, the same established
+ * pattern DateExpressionError/NotFoundError already use (ARCHITECTURE.md
+ * §2's "no prose from a tool" rule governs a *successful* result's shape,
+ * not an error message meant to prompt a retry) — the model is expected to
+ * ask the owner to disambiguate, in its own words, rather than guess.
+ */
+export class AmbiguousReferenceError extends Error {
+  constructor(
+    entity: string,
+    searchTerm: string,
+    public readonly candidates: readonly string[],
+  ) {
+    super(
+      `Multiple ${entity}s match "${searchTerm}": ${candidates.join("; ")}. ` +
+        "Ask which one is meant, or narrow the search (e.g. with a date).",
+    );
+    this.name = "AmbiguousReferenceError";
+  }
+}

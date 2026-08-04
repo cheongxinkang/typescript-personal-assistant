@@ -31,4 +31,17 @@ describe("updateTaskTool.handler", () => {
 
     expect(result.status).toBe("completed");
   });
+
+  it("resolves by title through the flat wire shape — the real MCP call shape", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const task = await insertTaskRow(testDb.database, { userId: OWNER_USER_ID, title: "Pick a static site generator" });
+
+    const result = await updateTaskTool.handler(
+      { action: "complete", title: "pick a static site generator" },
+      context(now),
+    );
+
+    expect(result.taskId).toBe(task.taskId);
+    expect(result.status).toBe("completed");
+  });
 });

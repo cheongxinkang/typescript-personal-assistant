@@ -3,7 +3,7 @@ import { ensureOwnerUser, insertEventRow, insertTaskRow, OWNER_USER_ID } from "@
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import type { DomainContext } from "./context.js";
 import { NotFoundError } from "./errors.js";
-import { updateTask } from "./updateTask.js";
+import { updateTask, updateTaskInputSchema } from "./updateTask.js";
 
 describe("updateTask (domain)", () => {
   let testDb: TestDatabase;
@@ -74,7 +74,7 @@ describe("updateTask (domain)", () => {
 
     const result = await updateTask(
       testDb.database,
-      { action: "edit", taskId: task.taskId, title: "Renamed" },
+      { action: "edit", taskId: task.taskId, newTitle: "Renamed" },
       context(now),
     );
 
@@ -91,5 +91,27 @@ describe("updateTask (domain)", () => {
         context(now),
       ),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  it("completes a task referenced by title alone — same fix as update_event", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const task = await insertTaskRow(testDb.database, { userId: OWNER_USER_ID, title: "Pick a static site generator" });
+
+    const result = await updateTask(
+      testDb.database,
+      { action: "complete", title: "pick a static site generator" },
+      context(now),
+    );
+
+    expect(result.taskId).toBe(task.taskId);
+    expect(result.status).toBe("completed");
+  });
+
+  it("rejects input giving both taskId and title", () => {
+    expect(updateTaskInputSchema.safeParse({ action: "cancel", taskId: "t1", title: "x" }).success).toBe(false);
+  });
+
+  it("rejects input giving neither taskId nor title", () => {
+    expect(updateTaskInputSchema.safeParse({ action: "cancel" }).success).toBe(false);
   });
 });

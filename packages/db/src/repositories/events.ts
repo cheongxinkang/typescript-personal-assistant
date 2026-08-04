@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, notInArray } from "drizzle-orm";
+import { and, eq, gte, ilike, inArray, lt, notInArray } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { events, eventsCurrent } from "../schema.js";
 
@@ -93,6 +93,37 @@ export async function listEventsInRange(
   ];
   if (!params.includeCancelled) {
     conditions.push(notInArray(eventsCurrent.status, ["cancelled", "rescheduled"]));
+  }
+
+  return database.db
+    .select()
+    .from(eventsCurrent)
+    .where(and(...conditions))
+    .orderBy(eventsCurrent.startsAt);
+}
+
+/**
+ * Case-insensitive substring match on title, scoped to **actionable**
+ * statuses only (`planned`/`proposed` — a `completed`/`cancelled`/
+ * `rescheduled` row is stale history, not something you'd naturally
+ * reference by name to act on again), optionally narrowed to a single
+ * calendar day. Added to resolve `update_event`'s `title` reference — see
+ * `packages/domain/src/resolveReference.ts`.
+ */
+export async function findEventsForOwnerByTitle(
+  database: Database,
+  userId: string,
+  searchTerm: string,
+  dayRange?: { startInclusive: Date; endExclusive: Date },
+): Promise<EventRow[]> {
+  const conditions = [
+    eq(eventsCurrent.userId, userId),
+    inArray(eventsCurrent.status, ["planned", "proposed"]),
+    ilike(eventsCurrent.title, `%${searchTerm}%`),
+  ];
+  if (dayRange) {
+    conditions.push(gte(eventsCurrent.startsAt, dayRange.startInclusive));
+    conditions.push(lt(eventsCurrent.startsAt, dayRange.endExclusive));
   }
 
   return database.db

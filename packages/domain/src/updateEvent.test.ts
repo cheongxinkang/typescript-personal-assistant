@@ -3,7 +3,7 @@ import { ensureOwnerUser, getCurrentEvent, insertEventRow, OWNER_USER_ID } from 
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import type { DomainContext } from "./context.js";
 import { NotFoundError } from "./errors.js";
-import { updateEvent } from "./updateEvent.js";
+import { updateEvent, updateEventInputSchema } from "./updateEvent.js";
 
 describe("updateEvent (domain)", () => {
   let testDb: TestDatabase;
@@ -277,5 +277,38 @@ describe("updateEvent (domain)", () => {
         context(now),
       ),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  it("completes an event referenced by title alone — the real bug this fixes: referring to an event by name, with no id in hand, previously never actually completed it", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const event = await insertEventRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Call with Lin",
+      startsAt: new Date("2026-08-03T01:00:00.000Z"),
+      durationMinutes: 30,
+    });
+
+    const result = await updateEvent(
+      testDb.database,
+      { action: "complete", title: "call with lin", actualMinutes: 160 },
+      context(now),
+    );
+
+    expect(result.eventId).toBe(event.eventId);
+    expect(result.status).toBe("completed");
+    expect(result.actualMinutes).toBe(160);
+
+    const stored = await getCurrentEvent(testDb.database, event.eventId);
+    expect(stored?.status).toBe("completed");
+  });
+
+  it("rejects input giving both eventId and title", () => {
+    expect(
+      updateEventInputSchema.safeParse({ action: "cancel", eventId: "e1", title: "x" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects input giving neither eventId nor title", () => {
+    expect(updateEventInputSchema.safeParse({ action: "cancel" }).success).toBe(false);
   });
 });
