@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { tasks, tasksCurrent } from "../schema.js";
 
@@ -54,4 +54,17 @@ export async function getCurrentTask(database: Database, taskId: string): Promis
     .where(eq(tasksCurrent.taskId, taskId))
     .limit(1);
   return row;
+}
+
+/**
+ * Every open task for the owner, folded. Whether one is "scheduled" is
+ * computed by the caller from `listNonCancelledEventsByTaskId`
+ * (Requirement 20) — never stored here, so this alone is not the
+ * candidate set for generation.
+ */
+export async function listOpenTasks(database: Database, userId: string): Promise<TaskRow[]> {
+  return database.db
+    .select()
+    .from(tasksCurrent)
+    .where(and(eq(tasksCurrent.userId, userId), eq(tasksCurrent.status, "open")));
 }

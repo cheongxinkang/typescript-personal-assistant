@@ -46,6 +46,18 @@ export async function getGenerationRun(
   return row;
 }
 
+/** Ordinary mutable — filled in once placement actually runs (Stage 6's apply step). */
+export async function updateGenerationRun(
+  database: Database,
+  id: string,
+  fields: { placedCount: number; overflow: OverflowEntry[] },
+): Promise<void> {
+  await database.db
+    .update(generationRuns)
+    .set({ placedCount: fields.placedCount, overflow: JSON.stringify(fields.overflow) })
+    .where(eq(generationRuns.id, id));
+}
+
 /** Parses the row's JSON `overflow` column back into typed entries. */
 export function parseOverflow(row: GenerationRunRow): OverflowEntry[] {
   return JSON.parse(row.overflow) as OverflowEntry[];

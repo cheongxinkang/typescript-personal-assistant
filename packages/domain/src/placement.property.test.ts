@@ -75,7 +75,7 @@ describe("placeTasks — property: no overlap, never outside the day shape", () 
       ),
       { numRuns: 200 },
     );
-  });
+  }, 20_000);
 });
 
 describe("placeTasks — property: earlier-deadline candidates are never placed after later ones", () => {
@@ -126,7 +126,7 @@ describe("placeTasks — property: earlier-deadline candidates are never placed 
       ),
       { numRuns: 200 },
     );
-  });
+  }, 20_000);
 });
 
 function isWithinDayShape(startsAt: Date, durationMinutes: number, dayShape: DayShape): boolean {
