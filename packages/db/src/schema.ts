@@ -196,6 +196,55 @@ export const turnUsage = pgTable("turn_usage", {
 });
 
 /**
+ * Ordinary mutable (ARCHITECTURE.md §4) — operational state, not domain
+ * history, so this table is a real UPDATE target (unlike projects/tasks/
+ * events). `subjectId` is a projectId (project_task_breakdown) or a
+ * generation_runs.id (schedule_generation) — a plain uuid, not an FK, for
+ * the same fold-key reason events.taskId isn't one.
+ */
+export const batchJobs = pgTable("batch_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: text("kind", { enum: ["project_task_breakdown", "schedule_generation"] }).notNull(),
+  subjectId: uuid("subject_id").notNull(),
+  providerBatchId: text("provider_batch_id").notNull(),
+  status: text("status", {
+    enum: ["submitted", "polling", "ended", "applied", "failed"],
+  })
+    .notNull()
+    .default("submitted"),
+  attempts: integer("attempts").notNull().default(0),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costMicros: integer("cost_micros"),
+  // Category only, per the spec's Security section — never the raw
+  // provider error (see AnthropicBatchProvider's error mapping).
+  failureCategory: text("failure_category"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+});
+
+/**
+ * Ordinary mutable. Requirement 14's overflow report needs to survive past
+ * the message that announces it ("what didn't fit?" answerable later
+ * without regenerating) — this is where it's persisted. `overflow` is a
+ * JSON array of `{ taskId, reason }`, not a normalized table: it's written
+ * once per run and never queried by its own fields, only read back whole.
+ */
+export const generationRuns = pgTable("generation_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  horizonStart: timestamp("horizon_start", { withTimezone: true }).notNull(),
+  horizonEnd: timestamp("horizon_end", { withTimezone: true }).notNull(),
+  batchJobId: uuid("batch_job_id").references(() => batchJobs.id),
+  placedCount: integer("placed_count").notNull().default(0),
+  overflow: text("overflow").notNull().default("[]"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * The fold: latest row per event_id. Every read goes through this view —
  * see phase-1-vertical-slice.md's "no application code reads the base
  * table directly" rule. `DISTINCT ON` ties broken by createdAt then rowId
