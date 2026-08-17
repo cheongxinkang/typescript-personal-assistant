@@ -1,0 +1,219 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ensureOwnerUser, getCurrentEvent, insertEventRow, OWNER_USER_ID } from "@assistant/db";
+import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
+import type { DomainContext } from "./context.js";
+import { NotFoundError } from "./errors.js";
+import { updateEvent } from "./updateEvent.js";
+
+describe("updateEvent (domain)", () => {
+  let testDb: TestDatabase;
+
+  beforeAll(async () => {
+    testDb = await startTestDatabase();
+    await ensureOwnerUser(testDb.database, "Asia/Singapore");
+  }, 60_000);
+
+  afterAll(async () => {
+    await testDb.teardown();
+  });
+
+  function context(now: Date): DomainContext {
+    return { now, ownerTimezone: "Asia/Singapore", ownerUserId: OWNER_USER_ID };
+  }
+
+  describe("complete", () => {
+    it("records actualMinutes without touching the planned durationMinutes — Requirement 16", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Write chapter",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 120,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "complete", eventId: event.eventId, actualMinutes: 90 },
+        context(now),
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.durationMinutes).toBe(120); // untouched
+      expect(result.actualMinutes).toBe(90);
+    });
+
+    it("defaults actualMinutes to the planned duration when omitted", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Standup",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "complete", eventId: event.eventId },
+        context(now),
+      );
+      expect(result.actualMinutes).toBe(30);
+    });
+
+    it("is idempotent when completing an already-completed event", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Once",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+      await updateEvent(testDb.database, { action: "complete", eventId: event.eventId }, context(now));
+
+      const second = await updateEvent(
+        testDb.database,
+        { action: "complete", eventId: event.eventId },
+        context(now),
+      );
+      expect(second.status).toBe("completed");
+    });
+  });
+
+  describe("cancel", () => {
+    it("cancels an event, freeing it from future clash checks", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "No longer needed",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "cancel", eventId: event.eventId },
+        context(now),
+      );
+      expect(result.status).toBe("cancelled");
+    });
+
+    it("is idempotent when cancelling an already-cancelled event", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Twice",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+      await updateEvent(testDb.database, { action: "cancel", eventId: event.eventId }, context(now));
+
+      const second = await updateEvent(
+        testDb.database,
+        { action: "cancel", eventId: event.eventId },
+        context(now),
+      );
+      expect(second.status).toBe("cancelled");
+    });
+  });
+
+  describe("move", () => {
+    it("marks the original rescheduled and creates a new event carrying movedFromEventId", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Team sync",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "move", eventId: event.eventId, dateExpression: "+5d 10:00" },
+        context(now),
+      );
+
+      expect(result.eventId).not.toBe(event.eventId);
+      expect(result.movedFromEventId).toBe(event.eventId);
+      expect(result.status).toBe("planned");
+
+      const original = await getCurrentEvent(testDb.database, event.eventId);
+      expect(original?.status).toBe("rescheduled");
+    });
+
+    it("reports a clash with an existing planned event at the new time", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const other = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Fixed appointment",
+        startsAt: new Date("2026-08-08T06:00:00.000Z"), // +6d 14:00 SGT
+        durationMinutes: 60,
+      });
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Movable meeting",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "move", eventId: event.eventId, dateExpression: "+6d 14:15" },
+        context(now),
+      );
+
+      expect(result.clashesWith).toEqual([other.eventId]);
+    });
+  });
+
+  describe("split", () => {
+    it("marks the completed portion done and reports the remainder, without creating a row for it", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Migrate posts",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 120,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "split", eventId: event.eventId, completedMinutes: 60 },
+        context(now),
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.durationMinutes).toBe(60);
+      expect(result.actualMinutes).toBe(60);
+      expect(result.remainderMinutes).toBe(60);
+    });
+
+    it("treats a completed portion at or beyond the full duration as a plain completion", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "Short task",
+        startsAt: new Date("2026-08-03T01:00:00.000Z"),
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "split", eventId: event.eventId, completedMinutes: 45 },
+        context(now),
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.remainderMinutes).toBeNull();
+    });
+  });
+
+  it("throws NotFoundError for a well-formed but non-existent eventId", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    await expect(
+      updateEvent(
+        testDb.database,
+        { action: "cancel", eventId: "00000000-0000-0000-0000-000000000000" },
+        context(now),
+      ),
+    ).rejects.toThrow(NotFoundError);
+  });
+});
