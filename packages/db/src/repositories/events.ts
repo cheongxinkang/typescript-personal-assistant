@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lt, notInArray } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { events, eventsCurrent } from "../schema.js";
 
@@ -67,4 +67,53 @@ export async function getCurrentEvent(
     .where(eq(eventsCurrent.eventId, eventId))
     .limit(1);
   return row;
+}
+
+/**
+ * Requirement 17 (get_schedule) and Requirement 14 (clash detection) both
+ * read a folded range of events; this is the one query both build on.
+ * `cancelled`/`rescheduled` are excluded by default (Requirement 17) since
+ * a superseded-by-reschedule row is exactly as stale as a cancelled one —
+ * `includeCancelled` widens both together, there being no separate flag for
+ * "include superseded reschedules" in the spec.
+ */
+export async function listEventsInRange(
+  database: Database,
+  params: {
+    userId: string;
+    startInclusive: Date;
+    endExclusive: Date;
+    includeCancelled?: boolean;
+  },
+): Promise<EventRow[]> {
+  const conditions = [
+    eq(eventsCurrent.userId, params.userId),
+    gte(eventsCurrent.startsAt, params.startInclusive),
+    lt(eventsCurrent.startsAt, params.endExclusive),
+  ];
+  if (!params.includeCancelled) {
+    conditions.push(notInArray(eventsCurrent.status, ["cancelled", "rescheduled"]));
+  }
+
+  return database.db
+    .select()
+    .from(eventsCurrent)
+    .where(and(...conditions))
+    .orderBy(eventsCurrent.startsAt);
+}
+
+/**
+ * Requirement 20: a task is "scheduled" iff a folded, non-cancelled event
+ * references its `taskId` — computed here, never stored. Used by
+ * update_task (to report orphaned events on completion/cancellation) and,
+ * from Stage 6, by generation to skip tasks that already have one.
+ */
+export async function listNonCancelledEventsByTaskId(
+  database: Database,
+  taskId: string,
+): Promise<EventRow[]> {
+  return database.db
+    .select()
+    .from(eventsCurrent)
+    .where(and(eq(eventsCurrent.taskId, taskId), notInArray(eventsCurrent.status, ["cancelled", "rescheduled"])));
 }
