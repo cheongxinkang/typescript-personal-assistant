@@ -4,6 +4,7 @@ import { carryForward, insertTaskRow, listNonCancelledEventsByTaskId, type Datab
 import { MAX_TASK_MINUTES } from "./constants.js";
 import type { DomainContext } from "./context.js";
 import { resolveTaskReference } from "./resolveReference.js";
+import { assertNoDependencyCycle, resolveDependsOn } from "./taskDependencies.js";
 import { toTaskData } from "./taskData.js";
 
 /**
@@ -36,6 +37,11 @@ export const updateTaskInputSchema = z
       description: z.string().max(2000).optional(),
       estimatedMinutes: z.number().int().positive().max(MAX_TASK_MINUTES).optional(),
       deadline: z.string().min(1).optional(),
+      // Titles of tasks that must complete first. Omitted leaves the
+      // existing dependencies unchanged (carried forward like any other
+      // omitted field); an explicit [] clears them — the one field here
+      // where "absent" and "empty" mean different things.
+      dependsOn: z.array(z.string().min(1)).optional(),
     }),
   ])
   .refine(hasExactlyOneReference, { message: "Provide exactly one of taskId or title." });
@@ -54,6 +60,7 @@ function toInsertParams(row: Omit<TaskRow, "rowId" | "createdAt">): Parameters<t
     status: row.status,
     source: row.source,
     completedAt: row.completedAt ?? undefined,
+    dependsOn: row.dependsOn,
   };
 }
 
@@ -80,10 +87,10 @@ export async function updateTask(
   );
 
   if (input.action === "complete" && current.status === "completed") {
-    return toTaskData(current, await orphanedEventIdsFor(database, current.taskId));
+    return toTaskData(database, current, await orphanedEventIdsFor(database, current.taskId));
   }
   if (input.action === "cancel" && current.status === "cancelled") {
-    return toTaskData(current, []);
+    return toTaskData(database, current, []);
   }
 
   let overrides: Partial<TaskRow>;
@@ -95,11 +102,20 @@ export async function updateTask(
     const deadline = input.deadline
       ? resolveDateExpression(input.deadline, context.now, context.ownerTimezone)
       : current.deadline;
+    const newTitle = input.newTitle ?? current.title;
+
+    let dependsOn: string[] | undefined;
+    if (input.dependsOn !== undefined) {
+      dependsOn = await resolveDependsOn(database, context.ownerUserId, context.ownerTimezone, input.dependsOn);
+      await assertNoDependencyCycle(database, { taskId: current.taskId, title: newTitle }, dependsOn);
+    }
+
     overrides = {
-      title: input.newTitle ?? current.title,
+      title: newTitle,
       description: input.description ?? current.description,
       estimatedMinutes: input.estimatedMinutes ?? current.estimatedMinutes,
       deadline,
+      ...(dependsOn !== undefined ? { dependsOn } : {}),
     };
   }
 
@@ -109,7 +125,7 @@ export async function updateTask(
   const orphanedEventIds =
     input.action === "complete" || input.action === "cancel" ? await orphanedEventIdsFor(database, row.taskId) : [];
 
-  return toTaskData(row, orphanedEventIds);
+  return toTaskData(database, row, orphanedEventIds);
 }
 
 async function orphanedEventIdsFor(database: Database, taskId: string): Promise<string[]> {
