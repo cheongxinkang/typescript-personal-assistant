@@ -54,8 +54,101 @@ export interface EventCreatedData {
   durationMinutes: number;
   /** True when the model omitted a duration and DEFAULT_EVENT_MINUTES was applied. */
   durationWasDefaulted: boolean;
+  /**
+   * Requirement 14: creating an event succeeds even when it overlaps an
+   * existing planned/completed event — this names what it overlaps rather
+   * than refusing. Empty when there's no clash.
+   */
+  clashesWith: string[];
 }
 
 export const EVENT_CREATED_KIND = "event_created" as const;
 
 export type EventCreatedEnvelope = ResponseEnvelope<typeof EVENT_CREATED_KIND, EventCreatedData>;
+
+/** One event as it appears in a schedule read (Requirement 17). */
+export interface ScheduleEventEntry {
+  eventId: string;
+  title: string;
+  /** ISO-8601 instant, UTC. */
+  startsAt: string;
+  durationMinutes: number;
+  status: "proposed" | "planned" | "completed" | "rescheduled" | "cancelled";
+}
+
+/** One calendar day, in the owner's timezone — present even when `events` is empty. */
+export interface ScheduleDayGroup {
+  /** YYYY-MM-DD, the owner's local calendar day. */
+  date: string;
+  events: ScheduleEventEntry[];
+}
+
+/** get_schedule's result: folded events, grouped by day, ordered within each day. */
+export interface ScheduleData {
+  /** ISO-8601 instant, UTC — inclusive range start. */
+  start: string;
+  /** ISO-8601 instant, UTC — exclusive range end. */
+  end: string;
+  days: ScheduleDayGroup[];
+}
+
+export const SCHEDULE_KIND = "schedule" as const;
+
+export type ScheduleEnvelope = ResponseEnvelope<typeof SCHEDULE_KIND, ScheduleData>;
+
+/** A task as read back after add_task or update_task. */
+export interface TaskData {
+  taskId: string;
+  title: string;
+  description: string | null;
+  estimatedMinutes: number | null;
+  /** ISO-8601 instant, UTC, or null if the task has no deadline. */
+  deadline: string | null;
+  status: "open" | "completed" | "cancelled";
+  projectId: string | null;
+  /**
+   * Requirement 9's edge case: completing/cancelling a task with events
+   * still attached does not touch those events — this names them so the
+   * reply can say so, rather than silently leaving them orphaned-looking.
+   */
+  orphanedEventIds: string[];
+}
+
+export const TASK_ADDED_KIND = "task_added" as const;
+
+export type TaskAddedEnvelope = ResponseEnvelope<typeof TASK_ADDED_KIND, TaskData>;
+
+export const TASK_UPDATED_KIND = "task_updated" as const;
+
+export type TaskUpdatedEnvelope = ResponseEnvelope<typeof TASK_UPDATED_KIND, TaskData>;
+
+/**
+ * update_event's result across all four actions (Requirement 8, 15, 16).
+ * One shape covers all of them rather than one type per action, since the
+ * tool itself is one operation with a discriminated `action` field
+ * (Requirement 28) — the envelope mirrors that.
+ */
+export interface EventUpdatedData {
+  action: "complete" | "cancel" | "move" | "split";
+  eventId: string;
+  title: string;
+  startsAt: string;
+  durationMinutes: number;
+  status: "proposed" | "planned" | "completed" | "rescheduled" | "cancelled";
+  actualMinutes: number | null;
+  clashesWith: string[];
+  /**
+   * Set only by a `split` whose remainder couldn't be placed yet — Stage 3
+   * has no placement function, so the remainder is reported, not written
+   * as an event row (there is no way to store an unscheduled event: Stage
+   * 2 made `startsAt` NOT NULL). Stage 4 wires placement in and this
+   * becomes an actual created event rather than a bare number.
+   */
+  remainderMinutes: number | null;
+  /** Set only by `move` — the event_id of the row this one supersedes. */
+  movedFromEventId: string | null;
+}
+
+export const EVENT_UPDATED_KIND = "event_updated" as const;
+
+export type EventUpdatedEnvelope = ResponseEnvelope<typeof EVENT_UPDATED_KIND, EventUpdatedData>;

@@ -1,7 +1,17 @@
 import { addEventTool } from "./addEvent.js";
+import { addTaskTool } from "./addTask.js";
+import { getScheduleTool } from "./getSchedule.js";
 import type { ToolDefinition } from "./toolDefinition.js";
+import { updateEventTool } from "./updateEvent.js";
+import { updateTaskTool } from "./updateTask.js";
 
-export const ALL_TOOLS: readonly ToolDefinition[] = [addEventTool];
+export const ALL_TOOLS: readonly ToolDefinition[] = [
+  getScheduleTool,
+  addEventTool,
+  updateEventTool,
+  addTaskTool,
+  updateTaskTool,
+];
 
 /**
  * Requirement 19: the same predicate builds the offer list and gates

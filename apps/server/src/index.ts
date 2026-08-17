@@ -4,12 +4,25 @@ import Fastify from "fastify";
 import pino from "pino";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { CONVERSATIONAL_KIND, EVENT_CREATED_KIND, FAILURE_KIND, SystemClock } from "@assistant/core";
+import {
+  CONVERSATIONAL_KIND,
+  EVENT_CREATED_KIND,
+  EVENT_UPDATED_KIND,
+  FAILURE_KIND,
+  SCHEDULE_KIND,
+  SystemClock,
+  TASK_ADDED_KIND,
+  TASK_UPDATED_KIND,
+} from "@assistant/core";
 import {
   RenderRegistry,
   renderConversational,
   renderEventCreated,
+  renderEventUpdated,
   renderFailure,
+  renderSchedule,
+  renderTaskAdded,
+  renderTaskUpdated,
 } from "@assistant/rendering";
 import { DiscordAdapter } from "@assistant/channels";
 import {
@@ -34,7 +47,7 @@ import { ConfigError, loadConfig } from "./config.js";
 // below would reject rather than resolve to an empty array (verified
 // empirically — see packages/tools/src/mcpServer.test.ts). Harden this
 // call site if a future profile can legitimately have no tools enabled.
-const ENABLED_TOOLS = ["add_event"];
+const ENABLED_TOOLS = ["get_schedule", "add_event", "update_event", "add_task", "update_task"];
 
 async function checkDatabaseReachable(database: Database): Promise<boolean> {
   try {
@@ -76,6 +89,10 @@ async function main(): Promise<void> {
   const registry = new RenderRegistry()
     .register(CONVERSATIONAL_KIND, renderConversational)
     .register(EVENT_CREATED_KIND, renderEventCreated)
+    .register(SCHEDULE_KIND, renderSchedule)
+    .register(TASK_ADDED_KIND, renderTaskAdded)
+    .register(TASK_UPDATED_KIND, renderTaskUpdated)
+    .register(EVENT_UPDATED_KIND, renderEventUpdated)
     .register(FAILURE_KIND, renderFailure);
 
   const provider = new AnthropicProvider(config.anthropicApiKey);
@@ -119,7 +136,16 @@ async function main(): Promise<void> {
       ownerTimezone: config.ownerTimezone,
       ownerUserId: OWNER_USER_ID,
     };
-    const mcpServer = buildMcpServer(offeredTools(ENABLED_TOOLS), toolContext);
+    const enabledToolDefinitions = offeredTools(ENABLED_TOOLS);
+    // Requirement 13/28: each tool declares which envelope kind its result
+    // maps to; runTurn needs this to render without a per-tool-name switch.
+    // Built here, not sent over MCP — it's a purely local rendering
+    // decision, not part of the protocol's wire shape.
+    const toolKinds: Record<string, string> = Object.fromEntries(
+      enabledToolDefinitions.map((tool) => [tool.name, tool.kind]),
+    );
+
+    const mcpServer = buildMcpServer(enabledToolDefinitions, toolContext);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const mcpClient = new McpClient({ name: "assistant-agent", version: "0.0.0" });
     await Promise.all([mcpServer.connect(serverTransport), mcpClient.connect(clientTransport)]);
@@ -145,6 +171,7 @@ async function main(): Promise<void> {
         registry,
         mcpClient,
         tools,
+        toolKinds,
         onError: (error) => {
           turnLogger.error(
             { err: error instanceof Error ? error.message : String(error) },

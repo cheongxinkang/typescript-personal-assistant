@@ -1,10 +1,4 @@
-import {
-  CONVERSATIONAL_KIND,
-  EVENT_CREATED_KIND,
-  FAILURE_KIND,
-  type EventCreatedData,
-  type ResponseEnvelope,
-} from "@assistant/core";
+import { CONVERSATIONAL_KIND, FAILURE_KIND, type ResponseEnvelope } from "@assistant/core";
 import type { LLMProvider, LLMToolDefinition } from "@assistant/providers";
 import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { runAgentTurn } from "@assistant/agents";
@@ -58,6 +52,14 @@ export interface RunTurnParams {
   registry: RenderRegistry;
   mcpClient: McpClient;
   tools: LLMToolDefinition[];
+  /**
+   * Tool name -> envelope `kind`, built by the caller from
+   * packages/tools' ToolDefinition.kind (Requirement 13/28). A tool with no
+   * entry here is a configuration bug — it maps to FAILURE_KIND rather than
+   * throwing mid-turn, since a turn's failure mode must always be a
+   * rendered envelope, never an unhandled exception.
+   */
+  toolKinds: Record<string, string>;
   historyLimit?: number;
   onError?: (error: unknown) => void;
 }
@@ -68,14 +70,19 @@ export interface RunTurnResult {
 }
 
 /**
- * Maps a successful tool's structuredContent to its envelope kind. Stage 5
- * has exactly one tool, so this is a plain switch — generalize (e.g. each
- * ToolDefinition declaring its own envelope kind) only once a second tool
- * actually needs it.
+ * Maps a successful tool's structuredContent to its envelope kind, from the
+ * `toolKinds` the caller built out of each offered tool's own declared
+ * `kind` — see ToolDefinition.kind's doc for why this replaced a per-tool
+ * switch once Phase 2 added a second tool.
  */
-function envelopeForToolResult(toolName: string, toolResult: unknown): ResponseEnvelope {
-  if (toolName === "add_event") {
-    return { status: "success", kind: EVENT_CREATED_KIND, data: toolResult as EventCreatedData };
+function envelopeForToolResult(
+  toolName: string,
+  toolResult: unknown,
+  toolKinds: Record<string, string>,
+): ResponseEnvelope {
+  const kind = toolKinds[toolName];
+  if (kind) {
+    return { status: "success", kind, data: toolResult };
   }
   return { status: "error", kind: FAILURE_KIND, data: { message: GENERIC_FAILURE_MESSAGE } };
 }
@@ -127,7 +134,7 @@ export async function runTurn(params: RunTurnParams): Promise<RunTurnResult> {
     if (agentResult.outcome === "text") {
       envelope = { status: "success", kind: CONVERSATIONAL_KIND, data: { text: agentResult.text } };
     } else if (agentResult.outcome === "tool_success") {
-      envelope = envelopeForToolResult(agentResult.toolName ?? "", agentResult.toolResult);
+      envelope = envelopeForToolResult(agentResult.toolName ?? "", agentResult.toolResult, params.toolKinds);
     } else {
       // "tool_exhausted" (retries used up without success) or
       // "budget_exceeded" (Requirement 11) — both a distinct, user-visible

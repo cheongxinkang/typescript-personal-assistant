@@ -1,4 +1,4 @@
-import type { EventCreatedData } from "@assistant/core";
+import { EVENT_CREATED_KIND, type EventCreatedData } from "@assistant/core";
 import { addEvent, addEventInputSchema, type AddEventInput } from "@assistant/domain";
 import { loadToolPrompt, requireToolField } from "@assistant/prompts";
 import type { ToolDefinition } from "./toolDefinition.js";
@@ -28,6 +28,7 @@ export const addEventTool: ToolDefinition<AddEventInput, EventCreatedData> = {
   name: "add_event",
   description: prompt.description,
   inputShape: addEventInputShape,
+  kind: EVENT_CREATED_KIND,
   // A thin adapter — every rule (date resolution, record construction,
   // "return the row read back after insert") lives in the domain function.
   // This is what Requirement 4's contract test proves: calling this handler

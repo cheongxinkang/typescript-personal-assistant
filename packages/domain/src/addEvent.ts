@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { resolveDateExpression, type EventCreatedData } from "@assistant/core";
 import { insertEventRow, type Database } from "@assistant/db";
+import { findClashes } from "./clash.js";
 import { DEFAULT_EVENT_MINUTES, MAX_EVENT_MINUTES } from "./constants.js";
 import type { DomainContext } from "./context.js";
 
@@ -28,6 +29,9 @@ export type AddEventInput = z.infer<typeof addEventInputSchema>;
  * When the model omits it, DEFAULT_EVENT_MINUTES is applied here — never as
  * a silent DB column default — and `durationWasDefaulted` is returned so
  * the rendered reply can say so.
+ *
+ * Requirement 14: an overlap with an existing planned/completed event is
+ * written anyway — this only reports what it overlaps, never refuses.
  */
 export async function addEvent(
   database: Database,
@@ -37,6 +41,12 @@ export async function addEvent(
   const startsAt = resolveDateExpression(input.dateExpression, context.now, context.ownerTimezone);
   const durationWasDefaulted = input.durationMinutes === undefined;
   const durationMinutes = input.durationMinutes ?? DEFAULT_EVENT_MINUTES;
+
+  const clashesWith = await findClashes(database, {
+    userId: context.ownerUserId,
+    startsAt,
+    durationMinutes,
+  });
 
   const row = await insertEventRow(database, {
     userId: context.ownerUserId,
@@ -51,5 +61,6 @@ export async function addEvent(
     startsAt: row.startsAt.toISOString(),
     durationMinutes: row.durationMinutes,
     durationWasDefaulted,
+    clashesWith,
   };
 }
