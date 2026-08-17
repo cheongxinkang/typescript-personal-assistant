@@ -3,7 +3,7 @@ import { ensureOwnerUser, getCurrentEvent, insertEventRow, OWNER_USER_ID } from 
 import { startTestDatabase, type TestDatabase } from "@assistant/db/testing";
 import type { DomainContext } from "./context.js";
 import { NotFoundError } from "./errors.js";
-import { updateEvent } from "./updateEvent.js";
+import { updateEvent, updateEventInputSchema } from "./updateEvent.js";
 
 describe("updateEvent (domain)", () => {
   let testDb: TestDatabase;
@@ -162,6 +162,56 @@ describe("updateEvent (domain)", () => {
 
       expect(result.clashesWith).toEqual([other.eventId]);
     });
+
+    it("resizes without moving when only durationMinutes is given — the real bug: previously the only way to resize was cancel-and-re-add, which needed two tool calls the loop can't make in one turn", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const startsAt = new Date("2026-08-05T10:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "NSFIT",
+        startsAt,
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "move", eventId: event.eventId, durationMinutes: 180 },
+        context(now),
+      );
+
+      expect(result.status).toBe("planned");
+      expect(result.durationMinutes).toBe(180);
+      expect(new Date(result.startsAt).getTime()).toBe(startsAt.getTime());
+
+      const original = await getCurrentEvent(testDb.database, event.eventId);
+      expect(original?.status).toBe("rescheduled");
+    });
+
+    it("moves and resizes together when both are given", async () => {
+      const now = new Date("2026-08-02T04:00:00.000Z");
+      const originalStartsAt = new Date("2026-08-05T10:00:00.000Z");
+      const event = await insertEventRow(testDb.database, {
+        userId: OWNER_USER_ID,
+        title: "NSFIT",
+        startsAt: originalStartsAt,
+        durationMinutes: 30,
+      });
+
+      const result = await updateEvent(
+        testDb.database,
+        { action: "move", eventId: event.eventId, dateExpression: "+3d 21:00", durationMinutes: 180 },
+        context(now),
+      );
+
+      expect(result.durationMinutes).toBe(180);
+      expect(new Date(result.startsAt).getTime()).not.toBe(originalStartsAt.getTime());
+    });
+
+    it("rejects a move with neither dateExpression nor durationMinutes", () => {
+      expect(
+        updateEventInputSchema.safeParse({ action: "move", eventId: "e1" }).success,
+      ).toBe(false);
+    });
   });
 
   describe("split", () => {
@@ -277,5 +327,38 @@ describe("updateEvent (domain)", () => {
         context(now),
       ),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  it("completes an event referenced by title alone — the real bug this fixes: referring to an event by name, with no id in hand, previously never actually completed it", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const event = await insertEventRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Call with Lin",
+      startsAt: new Date("2026-08-03T01:00:00.000Z"),
+      durationMinutes: 30,
+    });
+
+    const result = await updateEvent(
+      testDb.database,
+      { action: "complete", title: "call with lin", actualMinutes: 160 },
+      context(now),
+    );
+
+    expect(result.eventId).toBe(event.eventId);
+    expect(result.status).toBe("completed");
+    expect(result.actualMinutes).toBe(160);
+
+    const stored = await getCurrentEvent(testDb.database, event.eventId);
+    expect(stored?.status).toBe("completed");
+  });
+
+  it("rejects input giving both eventId and title", () => {
+    expect(
+      updateEventInputSchema.safeParse({ action: "cancel", eventId: "e1", title: "x" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects input giving neither eventId nor title", () => {
+    expect(updateEventInputSchema.safeParse({ action: "cancel" }).success).toBe(false);
   });
 });

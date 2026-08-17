@@ -16,8 +16,9 @@ const prompt = loadToolPrompt("update_task");
  */
 export const updateTaskInputShape = {
   action: z.enum(["complete", "cancel", "edit"]).describe(requireToolField(prompt, "update_task", "action")),
-  taskId: z.string().min(1).describe(requireToolField(prompt, "update_task", "taskId")),
-  title: z.string().min(1).max(200).optional().describe(requireToolField(prompt, "update_task", "title")),
+  taskId: z.string().min(1).optional().describe(requireToolField(prompt, "update_task", "taskId")),
+  title: z.string().min(1).optional().describe(requireToolField(prompt, "update_task", "title")),
+  newTitle: z.string().min(1).max(200).optional().describe(requireToolField(prompt, "update_task", "newTitle")),
   description: z.string().max(2000).optional().describe(
     requireToolField(prompt, "update_task", "description"),
   ),
