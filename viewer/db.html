@@ -2,9 +2,181 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Personal Assistant — Database Viewer</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1rem;
+    line-height: 1.4;
+  }
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1.05rem; margin-top: 2rem; border-bottom: 1px solid currentColor; padding-bottom: 0.25rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+  th, td {
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+    vertical-align: top;
+    word-break: break-word;
+  }
+  th { font-weight: 600; }
+  .state { opacity: 0.75; font-style: italic; padding: 0.5rem 0; }
+  .error { color: #b3261e; }
+</style>
 </head>
 <body>
-<p>Personal Assistant database viewer.</p>
+<h1>Personal Assistant — Database Viewer</h1>
+<p>Read-only. Reload the page to refresh.</p>
+
+<section>
+  <h2>Projects</h2>
+  <div id="projects-state" class="state">Loading...</div>
+  <table id="projects-table" hidden>
+    <thead><tr><th>Title</th><th>Status</th><th>Task generation</th><th>Target date</th><th>Created</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Tasks</h2>
+  <div id="tasks-state" class="state">Loading...</div>
+  <table id="tasks-table" hidden>
+    <thead><tr><th>Title</th><th>Status</th><th>Deadline</th><th>Estimated minutes</th><th>Project</th><th>Created</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Events</h2>
+  <div id="events-state" class="state">Loading...</div>
+  <table id="events-table" hidden>
+    <thead><tr><th>Title</th><th>Starts</th><th>Duration (min)</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Conversation history</h2>
+  <div id="messages-state" class="state">Loading...</div>
+  <table id="messages-table" hidden>
+    <thead><tr><th>When</th><th>Role</th><th>Content</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Turn usage</h2>
+  <div id="turn-usage-state" class="state">Loading...</div>
+  <table id="turn-usage-table" hidden>
+    <thead><tr><th>When</th><th>Provider</th><th>Model</th><th>Input tokens</th><th>Output tokens</th><th>Cache read</th><th>Latency (ms)</th><th>Outcome</th><th>Tool calls</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<script type="module">
+import { cellText, emptyStateLabel, ERROR_STATE_LABEL, formatDateTime, projectTitleFor } from "./render.mjs";
+
+function cell(value) {
+  const td = document.createElement("td");
+  td.textContent = cellText(value);
+  return td;
+}
+
+function showEmpty(stateEl, tableEl, entityLabel) {
+  stateEl.textContent = emptyStateLabel(entityLabel);
+  stateEl.className = "state";
+  stateEl.hidden = false;
+  tableEl.hidden = true;
+}
+
+function showError(stateEl, tableEl) {
+  stateEl.textContent = ERROR_STATE_LABEL;
+  stateEl.className = "state error";
+  stateEl.hidden = false;
+  tableEl.hidden = true;
+}
+
+function showRows(stateEl, tableEl) {
+  stateEl.hidden = true;
+  tableEl.hidden = false;
+}
+
+// One table's fetch failing must not blank the others (UX contract) — each
+// call is independent, with its own try/catch via .catch().
+function renderTable(name, entityLabel, rowToCells) {
+  const stateEl = document.getElementById(name + "-state");
+  const tableEl = document.getElementById(name + "-table");
+  const tbody = tableEl.querySelector("tbody");
+
+  fetch("/api/" + name)
+    .then((response) => {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then((rows) => {
+      if (!rows.length) {
+        showEmpty(stateEl, tableEl, entityLabel);
+        return;
+      }
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        rowToCells(row).forEach((td) => tr.appendChild(td));
+        tbody.appendChild(tr);
+      });
+      showRows(stateEl, tableEl);
+    })
+    .catch(() => showError(stateEl, tableEl));
+}
+
+renderTable("projects", "projects", (p) => [
+  cell(p.title), cell(p.status), cell(p.taskGenerationStatus), cell(formatDateTime(p.targetDate)), cell(formatDateTime(p.createdAt)),
+]);
+
+// Requirement 10: joined client-side against /api/projects, fetched
+// independently — a slow/failed projects fetch degrades to a blank project
+// column, per projectTitleFor's dangling-reference handling, not a thrown
+// error.
+(function renderTasks() {
+  const stateEl = document.getElementById("tasks-state");
+  const tableEl = document.getElementById("tasks-table");
+  const tbody = tableEl.querySelector("tbody");
+
+  Promise.all([
+    fetch("/api/tasks").then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }),
+    fetch("/api/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+  ])
+    .then(([tasks, projects]) => {
+      if (!tasks.length) {
+        showEmpty(stateEl, tableEl, "tasks");
+        return;
+      }
+      tasks.forEach((task) => {
+        const tr = document.createElement("tr");
+        [
+          cell(task.title), cell(task.status), cell(formatDateTime(task.deadline)),
+          cell(task.estimatedMinutes), cell(projectTitleFor(task, projects)), cell(formatDateTime(task.createdAt)),
+        ].forEach((td) => tr.appendChild(td));
+        tbody.appendChild(tr);
+      });
+      showRows(stateEl, tableEl);
+    })
+    .catch(() => showError(stateEl, tableEl));
+})();
+
+renderTable("events", "events", (e) => [
+  cell(e.title), cell(formatDateTime(e.startsAt)), cell(e.durationMinutes), cell(e.status), cell(formatDateTime(e.createdAt)),
+]);
+
+renderTable("messages", "messages", (m) => [cell(formatDateTime(m.createdAt)), cell(m.role), cell(m.content)]);
+
+renderTable("turn-usage", "turn usage records", (u) => [
+  cell(formatDateTime(u.createdAt)), cell(u.provider), cell(u.model), cell(u.inputTokens),
+  cell(u.outputTokens), cell(u.cacheReadTokens), cell(u.latencyMs), cell(u.outcome), cell(u.toolCalls),
+]);
+</script>
 </body>
 </html>

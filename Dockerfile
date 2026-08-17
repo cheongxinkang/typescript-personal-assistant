@@ -26,6 +26,10 @@ RUN pnpm install --frozen-lockfile
 COPY tsconfig.base.json tsconfig.json ./
 COPY apps apps
 COPY packages packages
+# viewerPage.test.ts imports viewer/render.mjs directly (so the exact file
+# shipped to the browser is what's tested) — tsc -b type-checks test files
+# too, so the build stage needs this even though tests don't run here.
+COPY viewer viewer
 
 RUN pnpm build
 
