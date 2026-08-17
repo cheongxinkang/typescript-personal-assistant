@@ -20,3 +20,14 @@ export function formatDateTime(date: Date, timezone: string): string {
 export function formatIsoWithZone(date: Date, timezone: string): string {
   return DateTime.fromJSDate(date, { zone: timezone }).toISO() ?? date.toISOString();
 }
+
+/** Bare time, e.g. "7:00 PM" — used within a schedule day group, whose heading already names the date. */
+export function formatTime(date: Date, timezone: string): string {
+  return DateTime.fromJSDate(date, { zone: timezone }).toFormat("h:mm a");
+}
+
+/** A `ScheduleDayGroup.date` (YYYY-MM-DD, already the owner's local calendar day) as an unambiguous heading. */
+export function formatCalendarDate(isoDate: string): string {
+  const parsed = DateTime.fromISO(isoDate);
+  return parsed.isValid ? parsed.toFormat("cccc d LLLL yyyy") : isoDate;
+}
