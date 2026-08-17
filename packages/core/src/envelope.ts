@@ -138,13 +138,17 @@ export interface EventUpdatedData {
   actualMinutes: number | null;
   clashesWith: string[];
   /**
-   * Set only by a `split` whose remainder couldn't be placed yet — Stage 3
-   * has no placement function, so the remainder is reported, not written
-   * as an event row (there is no way to store an unscheduled event: Stage
-   * 2 made `startsAt` NOT NULL). Stage 4 wires placement in and this
-   * becomes an actual created event rather than a bare number.
+   * Set only by a `split` whose remainder could not be placed — no day
+   * shape was supplied, or no free interval exists in the horizon
+   * (Requirement 18's placement). When placement succeeds instead,
+   * `remainderEventId` is set and this is null — the two are mutually
+   * exclusive, never both set.
    */
   remainderMinutes: number | null;
+  /** Set only by a `split` whose remainder was placed as a new event. */
+  remainderEventId: string | null;
+  /** Set only alongside `remainderEventId` — ISO-8601 instant, UTC, of the placed remainder. */
+  remainderStartsAt: string | null;
   /** Set only by `move` — the event_id of the row this one supersedes. */
   movedFromEventId: string | null;
 }

@@ -2,6 +2,8 @@ export * from "./context.js";
 export * from "./constants.js";
 export * from "./errors.js";
 export * from "./clash.js";
+export * from "./dayShape.js";
+export * from "./placement.js";
 export * from "./addEvent.js";
 export * from "./getSchedule.js";
 export * from "./addTask.js";

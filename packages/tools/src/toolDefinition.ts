@@ -1,5 +1,6 @@
 import type { ZodRawShape } from "zod";
 import type { Database } from "@assistant/db";
+import type { DayShape } from "@assistant/domain";
 
 /**
  * Requirement 9's "the time is already in hand" rule applies to tools too:
@@ -11,6 +12,8 @@ export interface ToolContext {
   now: Date;
   ownerTimezone: string;
   ownerUserId: string;
+  /** Stage 4: only update_event's split action reads this — see DomainContext.dayShape. */
+  dayShape?: DayShape;
 }
 
 /**

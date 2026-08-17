@@ -15,6 +15,7 @@
     { "path": "../../packages/providers" },
     { "path": "../../packages/prompts" },
     { "path": "../../packages/rendering" },
-    { "path": "../../packages/db" }
+    { "path": "../../packages/db" },
+    { "path": "../../packages/domain" }
   ]
 }

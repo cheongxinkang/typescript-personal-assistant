@@ -29,10 +29,13 @@ export const renderEventUpdated: Renderer<EventUpdatedData> = (
     return `Moved "${data.title}" to ${when}.${clashNote(data)}`;
   }
   // split
-  const remainderNote =
-    data.remainderMinutes !== null
-      ? ` ${data.remainderMinutes} min remaining — not yet scheduled.`
-      : "";
+  let remainderNote = "";
+  if (data.remainderEventId && data.remainderStartsAt) {
+    const remainderWhen = formatDateTime(new Date(data.remainderStartsAt), context.timezone);
+    remainderNote = ` Remaining time scheduled for ${remainderWhen}.`;
+  } else if (data.remainderMinutes !== null) {
+    remainderNote = ` ${data.remainderMinutes} min remaining — not yet scheduled.`;
+  }
   return `Marked ${data.actualMinutes} min of "${data.title}" complete.${remainderNote}`;
 };
 

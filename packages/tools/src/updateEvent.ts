@@ -45,6 +45,7 @@ export const updateEventTool: ToolDefinition<UpdateEventWireInput, EventUpdatedD
       now: context.now,
       ownerTimezone: context.ownerTimezone,
       ownerUserId: context.ownerUserId,
+      dayShape: context.dayShape,
     });
   },
 };
