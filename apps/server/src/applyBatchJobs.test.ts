@@ -2,10 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChannelAdapter, MessageHandler } from "@assistant/core";
 import {
   ensureOwnerUser,
+  findOrCreateSession,
   getBatchJob,
   getCurrentProject,
   insertBatchJob,
   insertProjectRow,
+  loadRecentHistory,
   OWNER_USER_ID,
   updateBatchJob,
 } from "@assistant/db";
@@ -26,10 +28,17 @@ const NOOP_LOGGER = { info: () => undefined, error: () => undefined };
 
 describe("applyEndedBatchJobsOnce", () => {
   let testDb: TestDatabase;
+  let sessionId: string;
 
   beforeAll(async () => {
     testDb = await startTestDatabase();
     await ensureOwnerUser(testDb.database, "Asia/Singapore");
+    const session = await findOrCreateSession(testDb.database, {
+      userId: OWNER_USER_ID,
+      channelType: "discord",
+      channelId: "apply-batch-jobs-test",
+    });
+    sessionId = session.id;
   }, 60_000);
 
   afterAll(async () => {
@@ -71,7 +80,7 @@ describe("applyEndedBatchJobsOnce", () => {
       testDb.database,
       provider,
       adapter,
-      { ownerUserId: OWNER_USER_ID, ownerTimezone: "Asia/Singapore", dayShape: {} },
+      { ownerUserId: OWNER_USER_ID, ownerTimezone: "Asia/Singapore", dayShape: {}, sessionId },
       NOOP_LOGGER,
     );
 
@@ -82,6 +91,12 @@ describe("applyEndedBatchJobsOnce", () => {
     expect(updatedProject?.taskGenerationStatus).toBe("ready");
     const updatedJob = await getBatchJob(testDb.database, job.id);
     expect(updatedJob?.status).toBe("applied");
+
+    // Found missing during Stage 7's real end-to-end pass: the message
+    // reached Discord but never entered conversation history, so a later
+    // turn had no way to know generation had finished.
+    const history = await loadRecentHistory(testDb.database, sessionId, 10);
+    expect(history.at(-1)?.content).toBe(adapter.sent[0]);
   });
 
   it("sends a failure message and never marks the project complete when the apply fails", async () => {
@@ -119,7 +134,7 @@ describe("applyEndedBatchJobsOnce", () => {
       testDb.database,
       provider,
       adapter,
-      { ownerUserId: OWNER_USER_ID, ownerTimezone: "Asia/Singapore", dayShape: {} },
+      { ownerUserId: OWNER_USER_ID, ownerTimezone: "Asia/Singapore", dayShape: {}, sessionId },
       NOOP_LOGGER,
     );
 
@@ -137,7 +152,7 @@ describe("applyEndedBatchJobsOnce", () => {
       testDb.database,
       provider,
       adapter,
-      { ownerUserId: OWNER_USER_ID, ownerTimezone: "Asia/Singapore", dayShape: {} },
+      { ownerUserId: OWNER_USER_ID, ownerTimezone: "Asia/Singapore", dayShape: {}, sessionId },
       NOOP_LOGGER,
     );
     expect(adapter.sent).toHaveLength(0);

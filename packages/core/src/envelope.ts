@@ -123,6 +123,34 @@ export const TASK_UPDATED_KIND = "task_updated" as const;
 export type TaskUpdatedEnvelope = ResponseEnvelope<typeof TASK_UPDATED_KIND, TaskData>;
 
 /**
+ * One project's tasks within a list_tasks result, or the shared bucket for
+ * tasks with no project (`projectId`/`projectTitle` both null) — mirrors
+ * ScheduleDayGroup's "group by the thing that varies" shape.
+ */
+export interface TaskListGroup {
+  projectId: string | null;
+  projectTitle: string | null;
+  tasks: TaskData[];
+}
+
+/**
+ * list_tasks' result — added during Stage 7's real end-to-end pass, which
+ * surfaced that there was no read path for tasks at all (only add/update).
+ * Mirrors get_schedule's read-only shape rather than reusing TaskAddedData's
+ * kind, since a list is a different result shape (many tasks, not one).
+ * Grouped by project (Stage 7 hardening: a flat list became unreadable once
+ * more than one project's tasks were mixed together) — project groups sorted
+ * by title, with any project-less tasks in one final "Tasks" group.
+ */
+export interface TaskListData {
+  groups: TaskListGroup[];
+}
+
+export const TASK_LIST_KIND = "task_list" as const;
+
+export type TaskListEnvelope = ResponseEnvelope<typeof TASK_LIST_KIND, TaskListData>;
+
+/**
  * update_event's result across all four actions (Requirement 8, 15, 16).
  * One shape covers all of them rather than one type per action, since the
  * tool itself is one operation with a discriminated `action` field

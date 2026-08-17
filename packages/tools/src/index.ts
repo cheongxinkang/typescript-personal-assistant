@@ -7,5 +7,6 @@ export * from "./updateEvent.js";
 export * from "./addProject.js";
 export * from "./generateSchedule.js";
 export * from "./confirmSchedule.js";
+export * from "./listTasks.js";
 export * from "./registry.js";
 export * from "./mcpServer.js";

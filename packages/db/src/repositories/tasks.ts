@@ -68,3 +68,23 @@ export async function listOpenTasks(database: Database, userId: string): Promise
     .from(tasksCurrent)
     .where(and(eq(tasksCurrent.userId, userId), eq(tasksCurrent.status, "open")));
 }
+
+/**
+ * Every one of the owner's tasks, folded, optionally narrowed to a single
+ * status — added during Stage 7's real end-to-end pass, which surfaced
+ * that nothing let the owner read tasks back at all (only add/update).
+ */
+export async function listTasksForOwner(
+  database: Database,
+  userId: string,
+  status?: TaskRow["status"],
+): Promise<TaskRow[]> {
+  const conditions = [eq(tasksCurrent.userId, userId)];
+  if (status) {
+    conditions.push(eq(tasksCurrent.status, status));
+  }
+  return database.db
+    .select()
+    .from(tasksCurrent)
+    .where(and(...conditions));
+}

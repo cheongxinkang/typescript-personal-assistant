@@ -4,6 +4,7 @@ import { addTaskTool } from "./addTask.js";
 import { confirmScheduleTool } from "./confirmSchedule.js";
 import { generateScheduleTool } from "./generateSchedule.js";
 import { getScheduleTool } from "./getSchedule.js";
+import { listTasksTool } from "./listTasks.js";
 import type { ToolDefinition } from "./toolDefinition.js";
 import { updateEventTool } from "./updateEvent.js";
 import { updateTaskTool } from "./updateTask.js";
@@ -17,6 +18,7 @@ export const ALL_TOOLS: readonly ToolDefinition[] = [
   addProjectTool,
   generateScheduleTool,
   confirmScheduleTool,
+  listTasksTool,
 ];
 
 /**
