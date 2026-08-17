@@ -89,12 +89,13 @@ export class AnthropicProvider implements LLMProvider {
       toolCall,
       model: response.model,
       usage: {
-        inputTokens: response.usage.input_tokens,
+        inputTokens: response.usage.input_tokens ?? 0,
         outputTokens: response.usage.output_tokens,
-        // @anthropic-ai/sdk@0.32.1's stable Usage type has no cache-read
-        // field yet (beta-only at this SDK version). Always 0 until
-        // Stage 6 wires up real prompt caching, worth an SDK bump then.
-        cacheReadTokens: 0,
+        // SDK bumped 0.32.1 -> 0.115.0 in Phase 2 Stage 0, specifically to
+        // get the stable (non-beta) Batch API. cache_read_input_tokens is
+        // in the stable Usage type at this version (it was beta-only
+        // before), so the previously-hardcoded 0 is now the real figure.
+        cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
       },
     };
   }

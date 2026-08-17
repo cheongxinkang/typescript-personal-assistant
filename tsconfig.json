@@ -5,6 +5,7 @@
     { "path": "packages/rendering" },
     { "path": "packages/channels" },
     { "path": "packages/db" },
+    { "path": "packages/domain" },
     { "path": "packages/providers" },
     { "path": "packages/prompts" },
     { "path": "packages/tools" },
