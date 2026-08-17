@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { startTestDatabase, type TestDatabase } from "../testing.js";
 import { ensureOwnerUser, OWNER_USER_ID } from "./users.js";
 import { findOrCreateSession } from "./sessions.js";
-import { insertTurnUsage } from "./turnUsage.js";
+import { insertTurnUsage, listRecentTurnUsage } from "./turnUsage.js";
 import { turnUsage } from "../schema.js";
 
 describe("insertTurnUsage", () => {
@@ -97,5 +97,54 @@ describe("insertTurnUsage", () => {
       .limit(1);
 
     expect(row).toMatchObject({ cacheReadTokens: 0, toolCalls: 0 });
+  });
+});
+
+describe("listRecentTurnUsage", () => {
+  let testDb: TestDatabase;
+  let sessionId: string;
+
+  beforeAll(async () => {
+    testDb = await startTestDatabase();
+    await ensureOwnerUser(testDb.database, "Asia/Singapore");
+    const session = await findOrCreateSession(testDb.database, {
+      userId: OWNER_USER_ID,
+      channelType: "discord",
+      channelId: "list-recent-turn-usage-test",
+    });
+    sessionId = session.id;
+  }, 60_000);
+
+  afterAll(async () => {
+    await testDb.teardown();
+  });
+
+  it("returns rows newest-first, including a failed turn's null token counts, capped at limit — phase_2a-db-visibility.md Requirement 6/7", async () => {
+    await insertTurnUsage(testDb.database, {
+      sessionId,
+      provider: "anthropic",
+      model: "claude-sonnet-5",
+      inputTokens: 100,
+      outputTokens: 20,
+      latencyMs: 100,
+      outcome: "success",
+    });
+    await insertTurnUsage(testDb.database, {
+      sessionId,
+      provider: "anthropic",
+      model: "claude-sonnet-5",
+      inputTokens: null,
+      outputTokens: null,
+      latencyMs: 50,
+      outcome: "failure",
+    });
+
+    const rows = await listRecentTurnUsage(testDb.database, sessionId, 500);
+    expect(rows[0]?.outcome).toBe("failure");
+    expect(rows[0]?.inputTokens).toBeNull();
+    expect(rows.at(-1)?.outcome).toBe("success");
+
+    const limited = await listRecentTurnUsage(testDb.database, sessionId, 1);
+    expect(limited).toHaveLength(1);
   });
 });
