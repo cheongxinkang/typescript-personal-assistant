@@ -29,6 +29,10 @@ export const updateTaskInputShape = {
     .optional()
     .describe(requireToolField(prompt, "update_task", "estimatedMinutes")),
   deadline: z.string().min(1).optional().describe(requireToolField(prompt, "update_task", "deadline")),
+  dependsOn: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(requireToolField(prompt, "update_task", "dependsOn")),
 };
 
 export const updateTaskWireSchema = z.object(updateTaskInputShape);

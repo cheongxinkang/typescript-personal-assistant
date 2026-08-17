@@ -18,6 +18,7 @@ import { categorizeBatchOutcome } from "./batchOutcome.js";
 import { DEFAULT_EVENT_MINUTES } from "./constants.js";
 import type { DayShape } from "./dayShape.js";
 import { deriveBusyIntervals, placeTasks, type PlacementCandidate } from "./placement.js";
+import { applyDependencyOrder } from "./scheduleOrdering.js";
 
 export interface ScheduleGenerationApplyResult {
   generationRunId: string;
@@ -80,17 +81,21 @@ export async function applyScheduleGeneration(
     }
   }
 
-  const candidates: PlacementCandidate[] = [];
+  const modelOrderedCandidates: PlacementCandidate[] = [];
   for (const taskId of ordering.data) {
     const task = stillUnscheduled.get(taskId);
     if (task) {
-      candidates.push({
+      modelOrderedCandidates.push({
         id: task.taskId,
         durationMinutes: task.estimatedMinutes,
         deadline: task.deadline ?? undefined,
+        dependsOn: task.dependsOn,
       });
     }
   }
+  // The model supplies an ordering only; a dependency is enforced here,
+  // deterministically, not requested of the model that produced it above.
+  const candidates = applyDependencyOrder(modelOrderedCandidates);
 
   const existingEvents = await listEventsInRange(database, {
     userId: context.ownerUserId,

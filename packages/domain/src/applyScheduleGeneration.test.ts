@@ -164,4 +164,147 @@ describe("applyScheduleGeneration (domain)", () => {
     const newProposal = events.find((e) => e.taskId === task.taskId);
     expect(newProposal?.startsAt).toEqual(horizonStart); // placed right at the start, unblocked by the stale proposal
   });
+
+  it("places a dependency before its dependent even when the model ordered them the other way", async () => {
+    const horizonStart = new Date("2026-08-31T01:00:00.000Z"); // Monday 09:00 SGT
+    const horizonEnd = new Date("2026-09-07T00:00:00.000Z");
+
+    const module4 = await insertTaskRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Finish module 4",
+      estimatedMinutes: 60,
+    });
+    const mockExam = await insertTaskRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Mock exam",
+      estimatedMinutes: 60,
+      dependsOn: [module4.taskId],
+    });
+
+    const run = await insertGenerationRun(testDb.database, {
+      userId: OWNER_USER_ID,
+      horizonStart,
+      horizonEnd,
+      placedCount: 0,
+      overflow: [],
+    });
+    const provider = new FakeBatchProvider();
+    const providerBatchId = provider.scriptNextBatch(
+      [{ status: "ended", requestCounts: { processing: 0, succeeded: 1, errored: 0, canceled: 0, expired: 0 }, endedAt: new Date() }],
+      [
+        {
+          customId: run.id,
+          outcome: {
+            type: "succeeded",
+            // Model ordered the dependent BEFORE its dependency — the bug
+            // this stage exists to prevent from reaching placement.
+            text: JSON.stringify([mockExam.taskId, module4.taskId]),
+            model: "fake",
+            usage: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 0 },
+          },
+        },
+      ],
+    );
+    await provider.submit([{ customId: run.id, systemPrompt: "sys", messages: [] }]);
+    const job = await insertBatchJob(testDb.database, {
+      kind: "schedule_generation",
+      subjectId: run.id,
+      providerBatchId,
+    });
+
+    await applyScheduleGeneration(testDb.database, provider, job, {
+      ownerUserId: OWNER_USER_ID,
+      ownerTimezone: "Asia/Singapore",
+      dayShape: WEEKDAY_9_TO_5,
+    });
+
+    const events = await listEventsInRange(testDb.database, {
+      userId: OWNER_USER_ID,
+      startInclusive: horizonStart,
+      endExclusive: horizonEnd,
+      includeCancelled: true,
+    });
+    const module4Event = events.find((e) => e.taskId === module4.taskId && e.status === "proposed");
+    const mockExamEvent = events.find((e) => e.taskId === mockExam.taskId && e.status === "proposed");
+
+    expect(module4Event).toBeDefined();
+    expect(mockExamEvent).toBeDefined();
+    expect(module4Event!.startsAt.getTime()).toBeLessThan(mockExamEvent!.startsAt.getTime());
+  });
+
+  it("does not place a dependent when its dependency overflows instead of being placed — real bug repro", async () => {
+    // Owner-reported (2026-08-04): module 4's deadline had already passed,
+    // so it never got a proposed event, but "Do mock exam" (dependsOn
+    // module 4) was placed anyway — dependency order alone (Stage 3)
+    // reordered the array but didn't check whether the dependency actually
+    // got placed. This is the exact scenario: a deadline already before the
+    // horizon.
+    const horizonStart = new Date("2026-08-14T01:00:00.000Z"); // Friday 09:00 SGT
+    const horizonEnd = new Date("2026-08-21T00:00:00.000Z");
+
+    const module4 = await insertTaskRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Finish Anthropic course module 4",
+      estimatedMinutes: 60,
+      deadline: new Date("2026-08-01T00:00:00.000Z"), // already before horizonStart
+    });
+    const mockExam = await insertTaskRow(testDb.database, {
+      userId: OWNER_USER_ID,
+      title: "Do mock exam for Anthropic course",
+      estimatedMinutes: 60,
+      dependsOn: [module4.taskId],
+    });
+
+    const run = await insertGenerationRun(testDb.database, {
+      userId: OWNER_USER_ID,
+      horizonStart,
+      horizonEnd,
+      placedCount: 0,
+      overflow: [],
+    });
+    const provider = new FakeBatchProvider();
+    const providerBatchId = provider.scriptNextBatch(
+      [{ status: "ended", requestCounts: { processing: 0, succeeded: 1, errored: 0, canceled: 0, expired: 0 }, endedAt: new Date() }],
+      [
+        {
+          customId: run.id,
+          outcome: {
+            type: "succeeded",
+            text: JSON.stringify([mockExam.taskId, module4.taskId]),
+            model: "fake",
+            usage: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 0 },
+          },
+        },
+      ],
+    );
+    await provider.submit([{ customId: run.id, systemPrompt: "sys", messages: [] }]);
+    const job = await insertBatchJob(testDb.database, {
+      kind: "schedule_generation",
+      subjectId: run.id,
+      providerBatchId,
+    });
+
+    const result = await applyScheduleGeneration(testDb.database, provider, job, {
+      ownerUserId: OWNER_USER_ID,
+      ownerTimezone: "Asia/Singapore",
+      dayShape: WEEKDAY_9_TO_5,
+    });
+
+    expect(result.placedCount).toBe(0);
+    expect(result.overflowCount).toBe(2);
+
+    const events = await listEventsInRange(testDb.database, {
+      userId: OWNER_USER_ID,
+      startInclusive: horizonStart,
+      endExclusive: horizonEnd,
+      includeCancelled: true,
+    });
+    const mockExamEvent = events.find((e) => e.taskId === mockExam.taskId && e.status === "proposed");
+    expect(mockExamEvent).toBeUndefined(); // the actual bug: this used to exist anyway
+
+    const updatedRun = await getGenerationRun(testDb.database, run.id);
+    const overflow = parseOverflow(updatedRun!);
+    expect(overflow).toContainEqual({ taskId: module4.taskId, reason: "deadline_passed" });
+    expect(overflow).toContainEqual({ taskId: mockExam.taskId, reason: "dependency_unmet" });
+  });
 });
