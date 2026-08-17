@@ -14,7 +14,19 @@ describe("offeredTools", () => {
     expect(offeredTools(["not_a_real_tool"])).toEqual([]);
   });
 
-  it("ALL_TOOLS currently contains exactly add_event — Stage 5's scope", () => {
-    expect(ALL_TOOLS.map((t) => t.name)).toEqual(["add_event"]);
+  it("ALL_TOOLS contains the five synchronous tools shipped through Stage 3", () => {
+    expect(ALL_TOOLS.map((t) => t.name)).toEqual([
+      "get_schedule",
+      "add_event",
+      "update_event",
+      "add_task",
+      "update_task",
+    ]);
+  });
+
+  it("every tool declares an envelope kind, per Requirement 13/28", () => {
+    for (const tool of ALL_TOOLS) {
+      expect(tool.kind).toBeTruthy();
+    }
   });
 });

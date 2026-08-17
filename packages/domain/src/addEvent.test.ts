@@ -63,6 +63,33 @@ describe("addEvent (domain)", () => {
     expect(result.durationWasDefaulted).toBe(false);
   });
 
+  it("has no clashes when nothing else is scheduled nearby", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const result = await addEvent(
+      testDb.database,
+      { title: "Solo meeting", dateExpression: "+10d 09:00", durationMinutes: 30 },
+      context(now),
+    );
+    expect(result.clashesWith).toEqual([]);
+  });
+
+  it("reports (but still writes) an event overlapping an existing planned event — Requirement 14", async () => {
+    const now = new Date("2026-08-02T04:00:00.000Z");
+    const first = await addEvent(
+      testDb.database,
+      { title: "Design review", dateExpression: "+11d 14:00", durationMinutes: 60 },
+      context(now),
+    );
+
+    const second = await addEvent(
+      testDb.database,
+      { title: "Dentist", dateExpression: "+11d 14:30", durationMinutes: 30 },
+      context(now),
+    );
+
+    expect(second.clashesWith).toEqual([first.eventId]);
+  });
+
   describe("addEventInputSchema", () => {
     it("rejects an empty title", () => {
       expect(

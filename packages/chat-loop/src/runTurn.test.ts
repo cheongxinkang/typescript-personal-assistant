@@ -68,6 +68,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [],
+      toolKinds: {},
     });
 
     expect(envelope).toEqual({ status: "success", kind: "conversational", data: { text: "Hi there!" } });
@@ -97,6 +98,7 @@ describe("runTurn", () => {
         startsAt: "2026-08-03T11:00:00.000Z",
         durationMinutes: 60,
         durationWasDefaulted: false,
+        clashesWith: [],
       },
     }));
 
@@ -110,6 +112,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [TEST_ADD_EVENT_TOOL_DEFINITION],
+      toolKinds: { add_event: EVENT_CREATED_KIND },
     });
 
     expect(provider.calls).toHaveLength(1);
@@ -138,6 +141,7 @@ describe("runTurn", () => {
         startsAt: "2026-08-03T00:00:00.000Z",
         durationMinutes: 60,
         durationWasDefaulted: false,
+        clashesWith: [],
       },
     }));
 
@@ -151,6 +155,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [TEST_ADD_EVENT_TOOL_DEFINITION],
+      toolKinds: { add_event: EVENT_CREATED_KIND },
     });
 
     expect(text).toContain("STORED title");
@@ -186,6 +191,7 @@ describe("runTurn", () => {
           startsAt: "2026-08-06T01:00:00.000Z",
           durationMinutes: 60,
           durationWasDefaulted: false,
+          clashesWith: [],
         },
       };
     });
@@ -200,6 +206,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [TEST_ADD_EVENT_TOOL_DEFINITION],
+      toolKinds: { add_event: EVENT_CREATED_KIND },
     });
 
     expect(provider.calls).toHaveLength(2);
@@ -242,6 +249,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [TEST_ADD_EVENT_TOOL_DEFINITION],
+      toolKinds: { add_event: EVENT_CREATED_KIND },
     });
 
     expect(provider.calls).toHaveLength(5);
@@ -269,6 +277,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [],
+      toolKinds: {},
       onError: (error) => {
         caughtError = error;
       },
@@ -304,6 +313,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [],
+      toolKinds: {},
     });
 
     await insertUserMessage(testDb.database, {
@@ -322,6 +332,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [],
+      toolKinds: {},
     });
 
     const secondCallMessages = provider.calls[1]?.messages ?? [];
@@ -352,6 +363,7 @@ describe("runTurn", () => {
         registry: registry(),
         mcpClient,
         tools: [],
+      toolKinds: {},
       }),
     ).rejects.toThrow(/empty history/);
   });
@@ -377,6 +389,7 @@ describe("runTurn", () => {
       registry: registry(),
       mcpClient,
       tools: [],
+      toolKinds: {},
       onError: (error) => {
         caughtError = error;
       },

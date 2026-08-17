@@ -18,4 +18,71 @@ add_event:
       meaning the next occurrence of that day — never today, even if today
       already matches. Optionally followed by a 24-hour time, e.g.
       "tomorrow 19:00". Omitting the time defaults to the start of that day.
-    durationMinutes: Optional. How long the event lasts, in minutes.
+    durationMinutes: Optional. How long the event lasts, in minutes. Defaults to 30 if omitted.
+
+get_schedule:
+  description: >
+    Read back the owner's schedule for a date range, grouped by day. Use
+    this before answering any question about what's already on the
+    schedule — never guess or rely on conversation history for it.
+  fields:
+    start: >
+      The first day to include. Accepted forms: an ISO date (YYYY-MM-DD),
+      "today", "tomorrow", a relative offset like "+3d", or a weekday
+      abbreviation (mon, tue, wed, thu, fri, sat, sun). A time component is
+      accepted but ignored — the whole day is included either way.
+    end: >
+      The last day to include (inclusive), in the same forms as `start`.
+      Must not be before `start`, and the range must not exceed 31 days.
+    includeCancelled: >
+      Optional. When true, also includes cancelled and superseded
+      (rescheduled-away-from) events, which are excluded by default.
+
+add_task:
+  description: >
+    Add a task — work to be done, independent of when. Use this instead of
+    add_event when the owner hasn't said when something will happen, only
+    that it needs doing.
+  fields:
+    title: A short, human-readable title for the task.
+    description: Optional. Extra detail giving the owner clarity on what the task entails.
+    estimatedMinutes: Optional. How long the task is expected to take, in minutes.
+    deadline: >
+      Optional. When the task is due, in the same date-expression forms as
+      add_event's dateExpression.
+    projectId: Optional. The id of the project this task belongs to, if any.
+
+update_task:
+  description: >
+    Change an existing task: mark it complete, cancel it, or edit its
+    details. Look up its id from a prior add_task result or from the
+    schedule/task list — never guess one.
+  fields:
+    action: One of "complete", "cancel", or "edit".
+    taskId: The id of the task to change.
+    title: Optional, only for action "edit". A new title for the task.
+    description: Optional, only for action "edit". A new description for the task.
+    estimatedMinutes: Optional, only for action "edit". A new time estimate, in minutes.
+    deadline: >
+      Optional, only for action "edit". A new deadline, in the same
+      date-expression forms as add_event's dateExpression.
+
+update_event:
+  description: >
+    Change an existing event: mark it complete, cancel it, move it to a
+    new time, or split it into a completed portion and a remaining
+    portion. Look up its id from a prior add_event or get_schedule result —
+    never guess one.
+  fields:
+    action: One of "complete", "cancel", "move", or "split".
+    eventId: The id of the event to change.
+    actualMinutes: >
+      Optional, only for action "complete". How long it actually took, in
+      minutes, if different from the planned duration.
+    dateExpression: >
+      Required for action "move". The new time, in the same forms as
+      add_event's dateExpression.
+    completedMinutes: >
+      Required for action "split". How many minutes were actually
+      completed; the rest is reported as remaining, to be scheduled
+      separately.
