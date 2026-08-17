@@ -35,7 +35,8 @@ function toAnthropicContent(content: string | LLMContentBlock[]): Anthropic.Mess
   });
 }
 
-function toAnthropicMessage(message: LLMMessage): Anthropic.MessageParam {
+/** Exported for packages/providers' batch client, which needs the same conversion. */
+export function toAnthropicMessage(message: LLMMessage): Anthropic.MessageParam {
   return { role: message.role, content: toAnthropicContent(message.content) };
 }
 
