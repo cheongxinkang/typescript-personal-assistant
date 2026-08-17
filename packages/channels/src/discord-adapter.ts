@@ -87,6 +87,14 @@ export class DiscordAdapter implements ChannelAdapter {
     await this.client.destroy();
   }
 
+  async sendToConfiguredChannel(text: string): Promise<void> {
+    const channel = await this.client.channels.fetch(this.config.channelId);
+    if (!channel || !("send" in channel)) {
+      throw new Error(`Configured channel "${this.config.channelId}" is not a sendable text channel.`);
+    }
+    await (channel as TextBasedChannel & { send: (text: string) => Promise<Message> }).send(text);
+  }
+
   private async handleMessage(discordMessage: Message, onMessage: MessageHandler): Promise<void> {
     const message: InboundMessage = {
       authorId: discordMessage.author.id,

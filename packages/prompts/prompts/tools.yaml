@@ -86,3 +86,40 @@ update_event:
       Required for action "split". How many minutes were actually
       completed; the rest is reported as remaining, to be scheduled
       separately.
+
+add_project:
+  description: >
+    Start a project — a longer-lived goal you'll break into tasks. If a
+    description is given, tasks are generated for it in the background
+    (this can take a few minutes, sometimes longer) and posted once ready;
+    say so rather than implying it happened instantly.
+  fields:
+    title: A short, human-readable title for the project.
+    description: >
+      Optional but recommended. What the project involves — the more
+      concrete, the better the generated tasks. Omit only if the owner
+      genuinely wants an empty project to add tasks to by hand.
+    targetDate: >
+      Optional. When the project should be done by, in the same
+      date-expression forms as add_event's dateExpression.
+
+generate_schedule:
+  description: >
+    Plan the upcoming week (or a different horizon) by placing open,
+    not-yet-scheduled tasks into free time. This submits a background job
+    and does not create anything immediately — the result, including any
+    tasks that didn't fit, arrives as a separate message once it's ready.
+    The owner must review and confirm the result (confirm_schedule) before
+    it becomes real, confirmed schedule.
+  fields:
+    horizonDays: >
+      Optional. How many days ahead to plan for. Defaults to a
+      standard planning horizon if omitted.
+
+confirm_schedule:
+  description: >
+    Confirm a previously generated schedule proposal, turning its proposed
+    events into real, planned ones. Only call this after the owner has
+    actually agreed to the proposal — never on your own initiative.
+  fields:
+    generationRunId: The id of the generation run to confirm, from its announcement message.

@@ -9,6 +9,9 @@ import {
   EVENT_CREATED_KIND,
   EVENT_UPDATED_KIND,
   FAILURE_KIND,
+  GENERATION_SUBMITTED_KIND,
+  PROJECT_ADDED_KIND,
+  SCHEDULE_CONFIRMED_KIND,
   SCHEDULE_KIND,
   SystemClock,
   TASK_ADDED_KIND,
@@ -20,7 +23,10 @@ import {
   renderEventCreated,
   renderEventUpdated,
   renderFailure,
+  renderGenerationSubmitted,
+  renderProjectAdded,
   renderSchedule,
+  renderScheduleConfirmed,
   renderTaskAdded,
   renderTaskUpdated,
 } from "@assistant/rendering";
@@ -38,6 +44,7 @@ import { AnthropicBatchProvider, AnthropicProvider, type LLMToolDefinition } fro
 import { runTurn } from "@assistant/chat-loop";
 import { loadAssistantSystemPrompt } from "@assistant/prompts";
 import { buildMcpServer, offeredTools, type ToolContext } from "@assistant/tools";
+import { applyEndedBatchJobsOnce } from "./applyBatchJobs.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { DayShapeConfigError, loadDayShape } from "./dayShape.js";
 import { pollBatchJobsOnce } from "./poller.js";
@@ -51,7 +58,16 @@ const POLL_INTERVAL_MS = 60_000;
 // below would reject rather than resolve to an empty array (verified
 // empirically — see packages/tools/src/mcpServer.test.ts). Harden this
 // call site if a future profile can legitimately have no tools enabled.
-const ENABLED_TOOLS = ["get_schedule", "add_event", "update_event", "add_task", "update_task"];
+const ENABLED_TOOLS = [
+  "get_schedule",
+  "add_event",
+  "update_event",
+  "add_task",
+  "update_task",
+  "add_project",
+  "generate_schedule",
+  "confirm_schedule",
+];
 
 async function checkDatabaseReachable(database: Database): Promise<boolean> {
   try {
@@ -111,6 +127,9 @@ async function main(): Promise<void> {
     .register(TASK_ADDED_KIND, renderTaskAdded)
     .register(TASK_UPDATED_KIND, renderTaskUpdated)
     .register(EVENT_UPDATED_KIND, renderEventUpdated)
+    .register(PROJECT_ADDED_KIND, renderProjectAdded)
+    .register(GENERATION_SUBMITTED_KIND, renderGenerationSubmitted)
+    .register(SCHEDULE_CONFIRMED_KIND, renderScheduleConfirmed)
     .register(FAILURE_KIND, renderFailure);
 
   const provider = new AnthropicProvider(config.anthropicApiKey);
@@ -118,25 +137,42 @@ async function main(): Promise<void> {
   const systemPrompt = loadAssistantSystemPrompt();
   const clock = new SystemClock();
 
-  // Stage 5's one scheduler concern: batch-job status polling. Each tick
-  // reads its own instant (a workflow tick, not a conversational turn — the
-  // Clock rule about a single per-turn read is about one turn, not one
-  // process lifetime). Errors are caught per-job inside pollBatchJobsOnce
-  // itself; a rejection here would only happen for something outside that,
-  // logged rather than crashing the process.
-  const pollTimer = setInterval(() => {
-    pollBatchJobsOnce(database, batchProvider, clock.now(), logger).catch((error) => {
-      logger.error(
-        { err: error instanceof Error ? error.message : String(error) },
-        "Batch poller tick failed",
-      );
-    });
-  }, POLL_INTERVAL_MS);
-
   const adapter = new DiscordAdapter(
     { botToken: config.discordBotToken, channelId: config.discordChannelId },
     logger,
   );
+
+  // ARCHITECTURE.md §3.2's "one tick loop, several concerns": polling and
+  // applying are two concerns of the same batch-job lifecycle, run in
+  // sequence each tick rather than as two independent timers, so applying
+  // never races a poll that just marked a job "ended" in the same tick. A
+  // raise in one must not stop the other — each call catches its own
+  // rejection, so a poll failure never skips that tick's apply step.
+  const pollTimer = setInterval(() => {
+    const now = clock.now();
+    pollBatchJobsOnce(database, batchProvider, now, logger)
+      .catch((error) => {
+        logger.error(
+          { err: error instanceof Error ? error.message : String(error) },
+          "Batch poller tick failed",
+        );
+      })
+      .then(() =>
+        applyEndedBatchJobsOnce(
+          database,
+          batchProvider,
+          adapter,
+          { ownerUserId: OWNER_USER_ID, ownerTimezone: config.ownerTimezone, dayShape },
+          logger,
+        ),
+      )
+      .catch((error) => {
+        logger.error(
+          { err: error instanceof Error ? error.message : String(error) },
+          "Batch apply tick failed",
+        );
+      });
+  }, POLL_INTERVAL_MS);
 
   await adapter.start(async (message, reply) => {
     const correlationId = randomUUID();
@@ -170,6 +206,7 @@ async function main(): Promise<void> {
       ownerTimezone: config.ownerTimezone,
       ownerUserId: OWNER_USER_ID,
       dayShape,
+      batchProvider,
     };
     const enabledToolDefinitions = offeredTools(ENABLED_TOOLS);
     // Requirement 13/28: each tool declares which envelope kind its result

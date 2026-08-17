@@ -14,6 +14,10 @@ export class PromptError extends Error {
 
 const PromptsSchema = z.object({
   assistant_system_prompt: z.string().min(1, "assistant_system_prompt must not be empty"),
+  project_breakdown_system_prompt: z.string().min(1, "project_breakdown_system_prompt must not be empty"),
+  schedule_generation_system_prompt: z
+    .string()
+    .min(1, "schedule_generation_system_prompt must not be empty"),
 });
 
 type Prompts = z.infer<typeof PromptsSchema>;
@@ -55,4 +59,14 @@ function loadAll(): Prompts {
 /** The assistant profile's system prompt — static, no per-turn interpolation. */
 export function loadAssistantSystemPrompt(): string {
   return loadAll().assistant_system_prompt;
+}
+
+/** Requirement 24's batch workflow — turns a project description into day-sized tasks. */
+export function loadProjectBreakdownSystemPrompt(): string {
+  return loadAll().project_breakdown_system_prompt;
+}
+
+/** Requirement 25's batch workflow — orders open, unscheduled tasks; the backend places them. */
+export function loadScheduleGenerationSystemPrompt(): string {
+  return loadAll().schedule_generation_system_prompt;
 }

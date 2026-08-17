@@ -16,6 +16,7 @@
     "@assistant/db": "workspace:*",
     "@assistant/domain": "workspace:*",
     "@assistant/prompts": "workspace:*",
+    "@assistant/providers": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^3.24.1"
   }

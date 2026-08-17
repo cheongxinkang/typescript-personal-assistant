@@ -31,4 +31,11 @@ export type MessageHandler = (message: InboundMessage, reply: ReplyHandle) => Pr
 export interface ChannelAdapter {
   start(onMessage: MessageHandler): Promise<void>;
   stop(): Promise<void>;
+  /**
+   * Stage 6: a batch workflow's completion is not a reply to any inbound
+   * message — the turn that submitted it ended (and its acknowledgement was
+   * sent) minutes to hours earlier. This sends a new, unprompted message to
+   * the one configured channel, for exactly that case.
+   */
+  sendToConfiguredChannel(text: string): Promise<void>;
 }
