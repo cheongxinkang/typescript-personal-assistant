@@ -14,6 +14,8 @@
   "dependencies": {
     "@assistant/core": "workspace:*",
     "@assistant/db": "workspace:*",
+    "@assistant/providers": "workspace:*",
+    "@assistant/prompts": "workspace:*",
     "luxon": "^3.5.0",
     "zod": "^3.24.1"
   },
