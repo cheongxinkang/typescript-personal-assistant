@@ -156,3 +156,53 @@ export interface EventUpdatedData {
 export const EVENT_UPDATED_KIND = "event_updated" as const;
 
 export type EventUpdatedEnvelope = ResponseEnvelope<typeof EVENT_UPDATED_KIND, EventUpdatedData>;
+
+/**
+ * add_project's immediate, synchronous result (Requirement 24). This is an
+ * acknowledgement, not a completed result — when `taskGenerationStatus` is
+ * `"pending"`, task generation is still running in the background and the
+ * real result arrives later as a separate, unprompted message.
+ */
+export interface ProjectData {
+  projectId: string;
+  title: string;
+  description: string | null;
+  /** ISO-8601 instant, UTC, or null if no target date was given. */
+  targetDate: string | null;
+  status: "active" | "completed" | "archived";
+  taskGenerationStatus: "pending" | "generating" | "ready" | "failed";
+}
+
+export const PROJECT_ADDED_KIND = "project_added" as const;
+
+export type ProjectAddedEnvelope = ResponseEnvelope<typeof PROJECT_ADDED_KIND, ProjectData>;
+
+/** generate_schedule's immediate, synchronous result — an acknowledgement, not a result (Requirement 25). */
+export interface GenerationSubmittedData {
+  generationRunId: string;
+  /** ISO-8601 instant, UTC. */
+  horizonStart: string;
+  /** ISO-8601 instant, UTC. */
+  horizonEnd: string;
+  /** False when there were no open, unscheduled tasks — nothing was submitted, run is already final. */
+  submitted: boolean;
+}
+
+export const GENERATION_SUBMITTED_KIND = "generation_submitted" as const;
+
+export type GenerationSubmittedEnvelope = ResponseEnvelope<
+  typeof GENERATION_SUBMITTED_KIND,
+  GenerationSubmittedData
+>;
+
+/** confirm_schedule's result — every promoted event is a new row (Requirement 19). */
+export interface ScheduleConfirmedData {
+  confirmedEventIds: string[];
+}
+
+export const SCHEDULE_CONFIRMED_KIND = "schedule_confirmed" as const;
+
+export type ScheduleConfirmedEnvelope = ResponseEnvelope<
+  typeof SCHEDULE_CONFIRMED_KIND,
+  ScheduleConfirmedData
+>;
