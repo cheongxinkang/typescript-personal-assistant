@@ -12,6 +12,7 @@ import { findClashes } from "./clash.js";
 import { GENERATION_HORIZON_DAYS } from "./constants.js";
 import type { DomainContext } from "./context.js";
 import { NotFoundError } from "./errors.js";
+import { toEventInsertParams } from "./eventRowParams.js";
 import { deriveBusyIntervals, placeTasks } from "./placement.js";
 
 export const updateEventInputSchema = z.discriminatedUnion("action", [
@@ -30,23 +31,6 @@ export const updateEventInputSchema = z.discriminatedUnion("action", [
 ]);
 
 export type UpdateEventInput = z.infer<typeof updateEventInputSchema>;
-
-function toInsertParams(row: Omit<EventRow, "rowId" | "createdAt">): Parameters<typeof insertEventRow>[1] {
-  return {
-    eventId: row.eventId,
-    userId: row.userId,
-    title: row.title,
-    startsAt: row.startsAt,
-    durationMinutes: row.durationMinutes,
-    status: row.status,
-    taskId: row.taskId ?? undefined,
-    parentEventId: row.parentEventId ?? undefined,
-    partIndex: row.partIndex ?? undefined,
-    movedFromEventId: row.movedFromEventId ?? undefined,
-    actualMinutes: row.actualMinutes ?? undefined,
-    sourceMessageId: row.sourceMessageId ?? undefined,
-  };
-}
 
 function toEventUpdatedData(
   row: EventRow,
@@ -99,7 +83,7 @@ export async function updateEvent(
       // planned durationMinutes — never reconciled by overwriting it.
       actualMinutes: input.actualMinutes ?? current.durationMinutes,
     });
-    const row = await insertEventRow(database, toInsertParams(carried));
+    const row = await insertEventRow(database, toEventInsertParams(carried));
     return toEventUpdatedData(row, "complete", [], null);
   }
 
@@ -108,7 +92,7 @@ export async function updateEvent(
       return toEventUpdatedData(current, "cancel", [], null);
     }
     const carried = carryForward(current, { status: "cancelled" });
-    const row = await insertEventRow(database, toInsertParams(carried));
+    const row = await insertEventRow(database, toEventInsertParams(carried));
     return toEventUpdatedData(row, "cancel", [], null);
   }
 
@@ -119,7 +103,7 @@ export async function updateEvent(
     // its slot), and a new event_id at the new time carrying
     // movedFromEventId. A single row at a new time would hide that a move
     // happened at all, which plan-versus-actual measurement needs.
-    await insertEventRow(database, toInsertParams(carryForward(current, { status: "rescheduled" })));
+    await insertEventRow(database, toEventInsertParams(carryForward(current, { status: "rescheduled" })));
 
     const clashesWith = await findClashes(database, {
       userId: context.ownerUserId,
@@ -148,7 +132,7 @@ export async function updateEvent(
       status: "completed",
       actualMinutes: current.durationMinutes,
     });
-    const row = await insertEventRow(database, toInsertParams(carried));
+    const row = await insertEventRow(database, toEventInsertParams(carried));
     return toEventUpdatedData(row, "split", [], null);
   }
 
@@ -158,7 +142,7 @@ export async function updateEvent(
     durationMinutes: input.completedMinutes,
     actualMinutes: input.completedMinutes,
   });
-  const row = await insertEventRow(database, toInsertParams(carried));
+  const row = await insertEventRow(database, toEventInsertParams(carried));
 
   // Requirement 15: place the remainder into the next free slot, now that
   // Stage 4 has a placement function. `context.dayShape` is optional
