@@ -294,6 +294,9 @@ async function main(): Promise<void> {
     logger,
     basicAuthUser: config.basicAuthUser,
     basicAuthPassword: config.basicAuthPassword,
+    database,
+    ownerUserId: OWNER_USER_ID,
+    sessionId: session.id,
   });
   await viewerApp.listen({ port: config.viewerPort, host: "0.0.0.0" });
   logger.info({ port: config.viewerPort }, "Viewer listening");
