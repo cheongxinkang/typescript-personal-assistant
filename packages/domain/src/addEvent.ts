@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { resolveDateExpression, type EventCreatedData } from "@assistant/core";
 import { insertEventRow, type Database } from "@assistant/db";
+import { DEFAULT_EVENT_MINUTES, MAX_EVENT_MINUTES } from "./constants.js";
 import type { DomainContext } from "./context.js";
 
 /**
@@ -12,7 +13,7 @@ import type { DomainContext } from "./context.js";
 export const addEventInputSchema = z.object({
   title: z.string().min(1, "title must not be empty").max(200),
   dateExpression: z.string().min(1),
-  durationMinutes: z.number().int().positive().optional(),
+  durationMinutes: z.number().int().positive().max(MAX_EVENT_MINUTES).optional(),
 });
 
 export type AddEventInput = z.infer<typeof addEventInputSchema>;
@@ -22,6 +23,11 @@ export type AddEventInput = z.infer<typeof addEventInputSchema>;
  * expression, never the model. Requirement 23: returns the row read back
  * after insert, never an echo of `input` — a model that restates a
  * different title can never have that title win over what was stored.
+ *
+ * Requirement 12: duration is required as of Stage 2's schema widening.
+ * When the model omits it, DEFAULT_EVENT_MINUTES is applied here — never as
+ * a silent DB column default — and `durationWasDefaulted` is returned so
+ * the rendered reply can say so.
  */
 export async function addEvent(
   database: Database,
@@ -29,12 +35,14 @@ export async function addEvent(
   context: DomainContext,
 ): Promise<EventCreatedData> {
   const startsAt = resolveDateExpression(input.dateExpression, context.now, context.ownerTimezone);
+  const durationWasDefaulted = input.durationMinutes === undefined;
+  const durationMinutes = input.durationMinutes ?? DEFAULT_EVENT_MINUTES;
 
   const row = await insertEventRow(database, {
     userId: context.ownerUserId,
     title: input.title,
     startsAt,
-    durationMinutes: input.durationMinutes,
+    durationMinutes,
   });
 
   return {
@@ -42,5 +50,6 @@ export async function addEvent(
     title: row.title,
     startsAt: row.startsAt.toISOString(),
     durationMinutes: row.durationMinutes,
+    durationWasDefaulted,
   };
 }

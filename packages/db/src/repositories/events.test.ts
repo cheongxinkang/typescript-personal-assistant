@@ -23,6 +23,7 @@ describe("events fold view (events_current)", () => {
       userId: OWNER_USER_ID,
       title: "Dinner with Cheryl",
       startsAt: new Date("2026-08-03T19:00:00.000Z"),
+      durationMinutes: 60,
     });
 
     const current = await getCurrentEvent(testDb.database, eventId);
@@ -36,6 +37,7 @@ describe("events fold view (events_current)", () => {
       userId: OWNER_USER_ID,
       title: "Original title",
       startsAt: new Date("2026-08-03T19:00:00.000Z"),
+      durationMinutes: 60,
     });
     // A later row for the same eventId simulates what a future edit will
     // look like once Stage 5 adds one — insert-only, never UPDATE.
@@ -44,6 +46,7 @@ describe("events fold view (events_current)", () => {
       userId: OWNER_USER_ID,
       title: "Corrected title",
       startsAt: new Date("2026-08-03T20:00:00.000Z"),
+      durationMinutes: 60,
     });
 
     const current = await getCurrentEvent(testDb.database, eventId);
@@ -58,18 +61,21 @@ describe("events fold view (events_current)", () => {
       userId: OWNER_USER_ID,
       title: "Event A",
       startsAt: new Date("2026-08-04T09:00:00.000Z"),
+      durationMinutes: 60,
     });
     await insertEventRow(testDb.database, {
       eventId: eventIdB,
       userId: OWNER_USER_ID,
       title: "Event B",
       startsAt: new Date("2026-08-04T10:00:00.000Z"),
+      durationMinutes: 60,
     });
     await insertEventRow(testDb.database, {
       eventId: eventIdA,
       userId: OWNER_USER_ID,
       title: "Event A, revised",
       startsAt: new Date("2026-08-04T09:30:00.000Z"),
+      durationMinutes: 60,
     });
 
     expect((await getCurrentEvent(testDb.database, eventIdA))?.title).toBe("Event A, revised");

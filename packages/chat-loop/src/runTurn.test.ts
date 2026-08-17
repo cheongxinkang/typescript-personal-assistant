@@ -95,7 +95,8 @@ describe("runTurn", () => {
         eventId: "e1",
         title: "Dinner with Cheryl",
         startsAt: "2026-08-03T11:00:00.000Z",
-        durationMinutes: null,
+        durationMinutes: 60,
+        durationWasDefaulted: false,
       },
     }));
 
@@ -135,7 +136,8 @@ describe("runTurn", () => {
         eventId: "e1",
         title: "STORED title",
         startsAt: "2026-08-03T00:00:00.000Z",
-        durationMinutes: null,
+        durationMinutes: 60,
+        durationWasDefaulted: false,
       },
     }));
 
@@ -178,7 +180,13 @@ describe("runTurn", () => {
         return { isError: true, errorText: `Could not resolve date expression: "${input.dateExpression}"` };
       }
       return {
-        structuredContent: { eventId: "e1", title: "Something", startsAt: "2026-08-06T01:00:00.000Z", durationMinutes: null },
+        structuredContent: {
+          eventId: "e1",
+          title: "Something",
+          startsAt: "2026-08-06T01:00:00.000Z",
+          durationMinutes: 60,
+          durationWasDefaulted: false,
+        },
       };
     });
 
