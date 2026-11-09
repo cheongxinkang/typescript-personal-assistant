@@ -28,6 +28,15 @@ spec:
       labels:
         app: postgres
     spec:
+      # Run as the image's postgres user (uid 70) so the entrypoint skips gosu.
+      # gosu spun forever when the node's AppArmor setup blocked in-container
+      # signals (Nov 2026, fixed on the node via sysctl). This avoids root and
+      # the gosu dependency. No fsGroup: the data is already owned by 70, and
+      # fsGroup would make the kubelet add group-write, which postgres rejects.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
       containers:
         - name: postgres
           image: postgres:16-alpine
